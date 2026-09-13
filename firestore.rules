@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Funções auxiliares de validação
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isCorporateEmail() {
+      return isAuthenticated() && 
+        (request.auth.token.email.matches('.*@conciliadorcontabil[.]com[.]br$') || 
+         request.auth.token.email.matches('fulvio.*'));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isCorporateEmail() && 
+        (getUserData().role == 'ADMIN' || request.auth.token.email.matches('fulvio.*'));
+    }
+
+    function isReviewer() {
+      return isCorporateEmail() && 
+        (getUserData().role == 'REVIEWER' || isAdmin());
+    }
+
+    // Coleção de Usuários
+    match /users/{userId} {
+      allow read: if isCorporateEmail();
+      allow create: if isCorporateEmail() && request.auth.uid == userId;
+      allow update: if isAdmin() || (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow delete: if isAdmin();
+    }
+
+    // Coleção de Categorias
+    match /categories/{categoryId} {
+      allow read: if isCorporateEmail();
+      allow write: if isAdmin();
+    }
+
+    // Coleção de Artigos
+    match /articles/{articleId} {
+      allow read: if isCorporateEmail() && (
+        resource.data.currentStatus == 'APPROVED' ||
+        resource.data.authorId == request.auth.uid ||
+        isReviewer()
+      );
+      allow create: if isCorporateEmail() && request.resource.data.currentStatus == 'PENDING';
+      allow update: if isCorporateEmail() && (
+        isReviewer() || 
+        (resource.data.authorId == request.auth.uid && request.resource.data.currentStatus == 'PENDING')
+      );
+      allow delete: if isAdmin();
+
+      // Subcoleções de Versões e Reviews
+      match /versions/{versionId} {
+        allow read: if isCorporateEmail();
+        allow write: if isCorporateEmail();
+      }
+
+      match /reviews/{reviewId} {
+        allow read: if isCorporateEmail();
+        allow write: if isReviewer();
+
+        match /comments/{commentId} {
+          allow read: if isCorporateEmail();
+          allow write: if isCorporateEmail();
+        }
+      }
+    }
+
+    // Central de Ferramentas & Softwares
+    match /tools_links/{toolId} {
+      allow read: if isCorporateEmail();
+      allow write: if isAdmin();
+    }
+
+    // Logs de Auditoria
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isCorporateEmail();
+    }
+  }
+}

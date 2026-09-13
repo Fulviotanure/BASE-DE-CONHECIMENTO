@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isCorporateEmail() {
+      return request.auth != null && 
+        (request.auth.token.email.matches('.*@conciliadorcontabil[.]com[.]br$') || 
+         request.auth.token.email.matches('fulvio.*'));
+    }
+
+    // Prints e imagens de artigos
+    match /articles/{articleId}/{allPaths=**} {
+      allow read: if isCorporateEmail();
+      allow write: if isCorporateEmail() && request.resource.size < 15 * 1024 * 1024; // Máximo 15MB por print
+    }
+
+    // Instaladores e executáveis na Central de Ferramentas
+    match /tools/{toolId}/{allPaths=**} {
+      allow read: if isCorporateEmail();
+      allow write: if isCorporateEmail(); // Upload restrito ao administrador no painel
+    }
+  }
+}
