@@ -35,7 +35,8 @@ import {
   AlignLeft,
   AlignRight,
   Maximize2,
-  Grid
+  Grid,
+  Video
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
@@ -61,14 +62,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   );
   const [proposalNote, setProposalNote] = useState(editingArticle?.proposalNote || '');
   const [content, setContent] = useState(
-    editingArticle?.contentHtml ||
-      `<h2>Visão Geral do Procedimento</h2>\n<p>Descreva detalhadamente o passo a passo da rotina contábil...</p>\n\n<div class="callout callout-tip">\n  <strong>💡 Dica:</strong> Utilize arquivos no formato .OFX para maior precisão no confronto bancário.\n</div>`
+    editingArticle?.contentHtml || ''
   );
 
   // Modo de Edição: Texto Visual (Padrão WYSIWYG) vs Código HTML
   const [editorMode, setEditorMode] = useState<'VISUAL' | 'HTML'>('VISUAL');
-  // Visualização Lado a Lado (Split Preview em Tempo Real)
-  const [splitView, setSplitView] = useState(true);
 
   // Anexos do Artigo
   const [attachments, setAttachments] = useState<{ id: string; name: string; size: string; url?: string }[]>(
@@ -79,6 +77,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageCaption, setImageCaption] = useState('');
+
+  // Modal para Inserção de Vídeos por Link
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoCaption, setVideoCaption] = useState('');
 
   // Dropdown e Grid Interativo de Criação de Tabela por Mouse
   const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
@@ -259,20 +262,72 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     }
   };
 
-  // Inserção de Caixas de Destaque (Callouts)
+  // Inserção de Caixas de Destaque (Callouts) - Sem texto de exemplo pré-inserido
   const insertCalloutTip = () => {
-    const html = `<div class="callout callout-tip" style="padding: 14px 18px; margin: 16px 0; background: rgba(92, 183, 128, 0.12); border-left: 4px solid #5cb780; border-radius: 8px; color: var(--text-main);"><strong style="color: #5cb780; display: block; margin-bottom: 4px;">💡 Dica Operacional:</strong><p>Insira aqui uma recomendação prática para agilizar a conciliação.</p></div><p><br></p>`;
+    const html = `<div class="callout callout-tip" style="padding: 14px 18px; margin: 16px 0; background: rgba(92, 183, 128, 0.12); border-left: 4px solid #5cb780; border-radius: 8px; color: var(--text-main);"><strong style="color: #5cb780; display: block; margin-bottom: 4px;">💡 Dica:</strong><p><br></p></div><p><br></p>`;
     insertHtmlAtCursor(html);
   };
 
   const insertCalloutInfo = () => {
-    const html = `<div class="callout callout-info" style="padding: 14px 18px; margin: 16px 0; background: rgba(56, 189, 248, 0.12); border-left: 4px solid #38bdf8; border-radius: 8px; color: var(--text-main);"><strong style="color: #38bdf8; display: block; margin-bottom: 4px;">ℹ️ Observação:</strong><p>Insira aqui uma nota relevante sobre prazos ou regras de negócio.</p></div><p><br></p>`;
+    const html = `<div class="callout callout-info" style="padding: 14px 18px; margin: 16px 0; background: rgba(56, 189, 248, 0.12); border-left: 4px solid #38bdf8; border-radius: 8px; color: var(--text-main);"><strong style="color: #38bdf8; display: block; margin-bottom: 4px;">ℹ️ Observação:</strong><p><br></p></div><p><br></p>`;
     insertHtmlAtCursor(html);
   };
 
   const insertCalloutWarning = () => {
-    const html = `<div class="callout callout-warning" style="padding: 14px 18px; margin: 16px 0; background: rgba(245, 158, 11, 0.12); border-left: 4px solid #f59e0b; border-radius: 8px; color: var(--text-main);"><strong style="color: #f59e0b; display: block; margin-bottom: 4px;">⚠️ Atenção:</strong><p>Atenção a este ponto para evitar duplicidade de lançamentos ou divergências.</p></div><p><br></p>`;
+    const html = `<div class="callout callout-warning" style="padding: 14px 18px; margin: 16px 0; background: rgba(245, 158, 11, 0.12); border-left: 4px solid #f59e0b; border-radius: 8px; color: var(--text-main);"><strong style="color: #f59e0b; display: block; margin-bottom: 4px;">⚠️ Atenção:</strong><p><br></p></div><p><br></p>`;
     insertHtmlAtCursor(html);
+  };
+
+  // Helper para Inserção de Vídeo por Link (YouTube, Vimeo ou MP4)
+  const getEmbedVideoHtml = (url: string, caption?: string) => {
+    const trimmed = url.trim();
+    let embedUrl = '';
+
+    // YouTube: suporta watch?v=, youtu.be/, embed/
+    const ytMatch = trimmed.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}`;
+    } else {
+      // Vimeo: suporta vimeo.com/ID
+      const vimeoMatch = trimmed.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)/);
+      if (vimeoMatch && vimeoMatch[1]) {
+        embedUrl = `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+      }
+    }
+
+    let videoPlayerHtml = '';
+    if (embedUrl) {
+      videoPlayerHtml = `
+        <div class="video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000;">
+          <iframe src="${embedUrl}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; border-radius: 8px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      `;
+    } else {
+      // Vídeo direto (ex: .mp4, .webm)
+      videoPlayerHtml = `
+        <div style="margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000;">
+          <video controls style="width: 100%; max-height: 480px; display: block; border-radius: 8px;" src="${trimmed}">
+            Seu navegador não suporta a tag de vídeo. Link: <a href="${trimmed}" target="_blank" rel="noopener noreferrer">${trimmed}</a>
+          </video>
+        </div>
+      `;
+    }
+
+    return `
+      <figure class="article-video-figure" style="margin: 20px 0; text-align: center;">
+        ${videoPlayerHtml}
+        ${caption ? `<figcaption style="font-size: 0.82rem; color: var(--text-subtle); margin-top: 8px; text-align: center;">${caption}</figcaption>` : ''}
+      </figure><p><br></p>
+    `;
+  };
+
+  const handleConfirmVideoUrl = () => {
+    if (!videoUrl.trim()) return;
+    const html = getEmbedVideoHtml(videoUrl, videoCaption);
+    insertHtmlAtCursor(html);
+    setVideoUrl('');
+    setVideoCaption('');
+    setIsVideoModalOpen(false);
   };
 
   // Criação de Tabela Interativa (Arrastando/Hovering o Mouse)
@@ -613,28 +668,8 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
           </div>
         </div>
 
-        {/* Controles de Visualização e Envio */}
+        {/* Ações de Envio */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Alternador Lado a Lado (Split View) */}
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setSplitView(!splitView)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: splitView ? 'rgba(92, 183, 128, 0.15)' : 'var(--bg-card)',
-              borderColor: splitView ? 'var(--color-primary)' : 'var(--border-subtle)',
-              color: splitView ? 'var(--color-primary)' : 'var(--text-muted)',
-              fontWeight: 600,
-            }}
-            title="Alternar prévia em tempo real lado a lado"
-          >
-            <Columns size={14} />
-            <span>{splitView ? 'Prévia Lado a Lado Ativa' : 'Exibir Prévia Lado a Lado'}</span>
-          </button>
-
           <button
             type="button"
             className="btn btn-primary btn-sm"
@@ -1087,29 +1122,6 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                   />
                 ))}
               </div>
-
-              {/* Alternar Prévia Dividida */}
-              <button
-                type="button"
-                onClick={() => setSplitView((prev) => !prev)}
-                style={{
-                  padding: '4px 9px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--border-subtle)',
-                  background: splitView ? 'var(--bg-surface)' : 'transparent',
-                  color: splitView ? 'var(--color-primary)' : 'var(--text-muted)',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}
-                title="Alternar entre tela dividida com prévia ou foco total no editor"
-              >
-                <Columns size={13} />
-                <span>{splitView ? 'Ocultar Prévia' : 'Ver Prévia'}</span>
-              </button>
             </div>
 
             {/* Linha Inferior: Formatações de Estilo & Callouts & Tabela & Imagens */}
@@ -1340,6 +1352,18 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 <span>Inserir Imagem</span>
               </button>
 
+              {/* Inserção de Vídeo por Link */}
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '4px 9px', display: 'flex', alignItems: 'center', gap: '5px', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#ef4444' }}
+                title="Inserir Vídeo por Link (YouTube, Vimeo ou MP4)"
+              >
+                <Video size={13} />
+                <span>Inserir Vídeo</span>
+              </button>
+
               {/* Duas Imagens Lado a Lado */}
               <button
                 type="button"
@@ -1354,7 +1378,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             </div>
           </div>
 
-          {/* ÁREA DE TEXTO VISUAL WYSIWYG / CÓDIGO + PRÉVIA EM TEMPO REAL */}
+          {/* ÁREA DE TEXTO VISUAL WYSIWYG / CÓDIGO + PRÉVIA APENAS QUANDO CÓDIGO HTML */}
           <div
             style={{
               display: 'flex',
@@ -1367,7 +1391,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
               background: 'var(--bg-card)',
             }}
           >
-            {/* Modo 1: Editor Visual WYSIWYG (Padrão) */}
+            {/* Modo 1: Editor Visual WYSIWYG (Padrão: 100% largura sem prévia lateral) */}
             {editorMode === 'VISUAL' ? (
               <div
                 ref={visualEditorRef}
@@ -1380,11 +1404,10 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 onClick={handleVisualClick}
                 className="article-visual-editor"
                 style={{
-                  flex: splitView ? '0 0 50%' : '1 1 100%',
+                  flex: '1 1 100%',
                   padding: '20px 24px',
                   background: 'var(--bg-card)',
                   border: 'none',
-                  borderRight: splitView ? '1px solid var(--border-subtle)' : 'none',
                   fontSize: '0.92rem',
                   lineHeight: 1.7,
                   color: 'var(--text-main)',
@@ -1393,55 +1416,55 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 }}
               />
             ) : (
-              /* Modo 2: Editor Textarea de Código HTML */
-              <textarea
-                ref={textareaRef}
-                required
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Edite o código HTML diretamente aqui..."
-                style={{
-                  flex: splitView ? '0 0 50%' : '1 1 100%',
-                  padding: '16px',
-                  background: 'var(--bg-card)',
-                  border: 'none',
-                  borderRight: splitView ? '1px solid var(--border-subtle)' : 'none',
-                  fontSize: '0.86rem',
-                  fontFamily: 'monospace',
-                  lineHeight: 1.65,
-                  color: 'var(--text-main)',
-                  resize: 'none',
-                  outline: 'none',
-                }}
-              />
-            )}
-
-            {/* Coluna 2: Prévia em Tempo Real (Live Preview) */}
-            {splitView && (
-              <div
-                style={{
-                  flex: '0 0 50%',
-                  padding: '18px 22px',
-                  background: 'var(--bg-surface)',
-                  overflowY: 'auto',
-                  lineHeight: 1.7,
-                  color: 'var(--text-main)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-                    <Eye size={13} />
-                    <span>Prévia em Tempo Real (Visão do Cliente)</span>
-                  </div>
-                  <span style={{ fontSize: '0.70rem', color: 'var(--text-subtle)' }}>Renderização instantânea</span>
-                </div>
-
-                <div 
-                  className="article-preview-content"
-                  style={{ fontSize: '0.92rem' }}
-                  dangerouslySetInnerHTML={{ __html: content }} 
+              /* Modo 2: Editor Textarea de Código HTML (com prévia ao lado) */
+              <>
+                <textarea
+                  ref={textareaRef}
+                  required
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Edite o código HTML diretamente aqui..."
+                  style={{
+                    flex: '0 0 50%',
+                    padding: '16px',
+                    background: 'var(--bg-card)',
+                    border: 'none',
+                    borderRight: '1px solid var(--border-subtle)',
+                    fontSize: '0.86rem',
+                    fontFamily: 'monospace',
+                    lineHeight: 1.65,
+                    color: 'var(--text-main)',
+                    resize: 'none',
+                    outline: 'none',
+                  }}
                 />
-              </div>
+
+                {/* Coluna 2: Prévia em Tempo Real (Aberta apenas no modo Código HTML) */}
+                <div
+                  style={{
+                    flex: '0 0 50%',
+                    padding: '18px 22px',
+                    background: 'var(--bg-surface)',
+                    overflowY: 'auto',
+                    lineHeight: 1.7,
+                    color: 'var(--text-main)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+                      <Eye size={13} />
+                      <span>Prévia em Tempo Real (Visão do Cliente)</span>
+                    </div>
+                    <span style={{ fontSize: '0.70rem', color: 'var(--text-subtle)' }}>Renderização instantânea</span>
+                  </div>
+
+                  <div 
+                    className="article-preview-content"
+                    style={{ fontSize: '0.92rem' }}
+                    dangerouslySetInnerHTML={{ __html: content }} 
+                  />
+                </div>
+              </>
             )}
           </div>
 

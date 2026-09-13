@@ -213,9 +213,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [articles]);
 
   const [tools, setTools] = useState<ToolItem[]>(() => {
-    const saved = localStorage.getItem('conciliador_tools_v5');
+    const saved = localStorage.getItem('conciliador_tools_v6');
     return saved ? JSON.parse(saved) : INITIAL_TOOLS;
   });
+
+  useEffect(() => {
+    localStorage.setItem('conciliador_tools_v6', JSON.stringify(tools));
+  }, [tools]);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
