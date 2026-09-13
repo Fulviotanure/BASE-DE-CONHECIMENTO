@@ -1,5 +1,7 @@
 export type UserRole = 'OPERATOR' | 'REVIEWER' | 'ADMIN';
 
+export type UserType = 'INTERNAL' | 'EXTERNAL';
+
 export type UserStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface UserProfile {
@@ -8,6 +10,7 @@ export interface UserProfile {
   displayName: string;
   photoURL?: string;
   role: UserRole;
+  userType?: UserType;
   status: UserStatus;
   createdAt: string;
   lastLoginAt: string;
@@ -59,6 +62,7 @@ export interface Article {
   contentHtml: string;
   reviews?: ArticleReview[];
   publishedAt?: string;
+  accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL';
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +80,7 @@ export interface ToolItem {
   versionTag?: string;
   orderIndex: number;
   isActive: boolean;
+  accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL';
 }
 
 export interface UserPerformance {

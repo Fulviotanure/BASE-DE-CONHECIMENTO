@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -9,15 +9,46 @@ import { ToolsHubView } from './components/views/ToolsHubView';
 import { DashboardView } from './components/views/DashboardView';
 import { UserManagementView } from './components/views/UserManagementView';
 import { ArticleEditorView } from './components/views/ArticleEditorView';
+import { LandingPresentationView } from './components/views/LandingPresentationView';
+import { ExternalPortalView } from './components/views/ExternalPortalView';
 import { SearchSpotlightModal } from './components/search/SearchSpotlightModal';
-import { FirebaseConfigModal } from './components/firebase/FirebaseConfigModal';
 import { AuthModal } from './components/auth/AuthModal';
+import { UserProfileModal } from './components/auth/UserProfileModal';
 import type { Article } from './types';
 
 const MainApp: React.FC = () => {
-  const [activeView, setActiveView] = useState<string>('kb');
+  const { 
+    currentUser, 
+    setSelectedArticle, 
+    isAuthModalOpen, 
+    setIsAuthModalOpen, 
+    setCurrentUser 
+  } = useApp();
+
+  const isInternal = currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email.includes('conciliadorcontabil.com.br'));
+
+  // Define a view inicial: se não houver usuário, vai para landing page de apresentação
+  const [activeView, setActiveView] = useState<string>(() => {
+    if (!currentUser) return 'landing';
+    return isInternal ? 'kb' : 'external-portal';
+  });
+
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
-  const { setSelectedArticle, isAuthModalOpen, setIsAuthModalOpen, setCurrentUser } = useApp();
+
+  // Sincroniza a visão ativa quando o usuário faz login ou logout
+  useEffect(() => {
+    if (!currentUser) {
+      if (activeView !== 'external-portal' && activeView !== 'tools') {
+        setActiveView('landing');
+      }
+    } else {
+      if (isInternal && (activeView === 'landing' || activeView === 'external-portal')) {
+        setActiveView('kb');
+      } else if (!isInternal && activeView !== 'tools') {
+        setActiveView('external-portal');
+      }
+    }
+  }, [currentUser]);
 
   const handleOpenNewArticle = () => {
     setEditingArticle(null);
@@ -31,23 +62,49 @@ const MainApp: React.FC = () => {
 
   const handleViewArticle = (art: Article) => {
     setSelectedArticle(art);
-    setActiveView('kb');
+    if (isInternal) {
+      setActiveView('kb');
+    } else {
+      setActiveView('external-portal');
+    }
   };
+
+  const isLanding = activeView === 'landing';
 
   return (
     <div className="app-container">
-      {/* Sidebar Navigation */}
-      <Sidebar
-        activeView={activeView}
-        setActiveView={setActiveView}
-        onOpenNewArticle={handleOpenNewArticle}
-      />
+      {/* Sidebar Navigation - oculta na landing page para experiência imersiva */}
+      {!isLanding && (
+        <Sidebar
+          activeView={activeView}
+          setActiveView={setActiveView}
+          onOpenNewArticle={handleOpenNewArticle}
+        />
+      )}
 
       {/* Main Content Area */}
       <div className="main-content">
         <Header activeView={activeView} setActiveView={setActiveView} />
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Landing Presentation Page (Sem Login) */}
+          {activeView === 'landing' && (
+            <LandingPresentationView 
+              onAccessExternalPortal={() => setActiveView('external-portal')} 
+            />
+          )}
+
+          {/* Portal Externo para Clientes e Visitantes */}
+          {activeView === 'external-portal' && (
+            <ExternalPortalView 
+              onBackToPresentation={() => setActiveView('landing')}
+              onSelectArticle={(art) => {
+                setSelectedArticle(art);
+              }}
+            />
+          )}
+
+          {/* Visões Internas (Colaboradores) */}
           {activeView === 'kb' && <KnowledgeBaseView onOpenNewArticle={handleOpenNewArticle} />}
           {activeView === 'my-articles' && (
             <MyArticlesView
@@ -73,17 +130,21 @@ const MainApp: React.FC = () => {
       <SearchSpotlightModal
         onSelectArticle={(art) => {
           setSelectedArticle(art);
-          setActiveView('kb');
+          if (isInternal) {
+            setActiveView('kb');
+          } else {
+            setActiveView('external-portal');
+          }
         }}
         onSelectTool={() => {
           setActiveView('tools');
         }}
       />
 
-      {/* Firebase Keys Configuration Modal */}
-      <FirebaseConfigModal />
+      {/* User Profile Modal (com opção de Sair da Conta) */}
+      <UserProfileModal />
 
-      {/* Corporate Email/Password Authentication Modal */}
+      {/* Authentication Modal (Google Account + E-mail e Senha) */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}

@@ -3,7 +3,15 @@ import confetti from 'canvas-confetti';
 import type { UserProfile, Article, Category, ToolItem, UserRole, ArticleStatus, UserPerformance } from '../types';
 import { INITIAL_USERS, INITIAL_ARTICLES, INITIAL_CATEGORIES, INITIAL_TOOLS } from '../data/initialSeed';
 import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, type FirebaseConfig } from '../services/firebase';
-import { subscribeAuthState, logoutUser, isCorporateEmailValid, registerWithEmailPassword } from '../services/authService';
+import { 
+  subscribeAuthState, 
+  logoutUser, 
+  isCorporateEmailValid, 
+  registerWithEmailPassword, 
+  loginWithGoogle,
+  determineUserType,
+  isAdminUser
+} from '../services/authService';
 import { 
   subscribeArticles, 
   saveArticleToFirestore, 
@@ -18,16 +26,21 @@ import {
 } from '../services/firestoreService';
 
 interface AppContextType {
-  // Usuário Atual & Simulação de Perfil
-  currentUser: UserProfile;
-  setCurrentUser: (user: UserProfile) => void;
+  // Usuário Atual & Autenticação
+  currentUser: UserProfile | null;
+  setCurrentUser: (user: UserProfile | null) => void;
+  isLoggedIn: boolean;
   switchRolePreview: (role: UserRole) => void;
   isRealFirebaseAuth: boolean;
   logout: () => Promise<void>;
+  loginWithGoogleAuth: () => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  loginAsUser: (user: UserProfile) => void;
   
-  // Modal de Autenticação
+  // Modais de Autenticação e Perfil
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
+  isProfileModalOpen: boolean;
+  setIsProfileModalOpen: (open: boolean) => void;
 
   // Usuários (Painel Administrativo)
   users: UserProfile[];
@@ -65,7 +78,7 @@ interface AppContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
 
-  // Configuração do Firebase
+  // Configurações de Conexão Cloud
   firebaseConfig: FirebaseConfig | null;
   isFirebaseConfigured: boolean;
   saveFirebaseKeys: (config: FirebaseConfig) => void;
@@ -78,26 +91,34 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Inicializa com dados do localStorage ou dados padrão
+  // Lista de Usuários reais da Conciliador Contábil (usando chave v2 para forçar atualização)
   const [users, setUsers] = useState<UserProfile[]>(() => {
-    const saved = localStorage.getItem('conciliador_users');
+    const saved = localStorage.getItem('conciliador_users_v2');
     return saved ? JSON.parse(saved) : INITIAL_USERS;
   });
 
-  // Fulvio é o superadministrador padrão
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    return users.find((u) => u.email.includes('fulvio')) || users[0];
+  // O usuário começa deslogado (null) a menos que haja sessão salva
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem('conciliador_current_user_v2');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
   });
 
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
 
   const [articles, setArticles] = useState<Article[]>(() => {
-    const saved = localStorage.getItem('conciliador_articles');
+    const saved = localStorage.getItem('conciliador_articles_v2');
     return saved ? JSON.parse(saved) : INITIAL_ARTICLES;
   });
 
   const [tools, setTools] = useState<ToolItem[]>(() => {
-    const saved = localStorage.getItem('conciliador_tools');
+    const saved = localStorage.getItem('conciliador_tools_v2');
     return saved ? JSON.parse(saved) : INITIAL_TOOLS;
   });
 
@@ -108,6 +129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Estados de Modais
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isRealFirebaseAuth, setIsRealFirebaseAuth] = useState(false);
 
@@ -116,16 +138,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (localStorage.getItem('conciliador_theme') as 'dark' | 'light') || 'dark';
   });
 
-  // Firebase Config
+  // Configuração Cloud
   const [firebaseConfig] = useState<FirebaseConfig | null>(getSavedFirebaseConfig);
 
   // ----------------------------------------------------
-  // Sincronização em Tempo Real com Firebase Firestore
+  // Sincronização em Tempo Real com Firestore
   // ----------------------------------------------------
   useEffect(() => {
     if (!isFirebaseConfigured) return;
 
-    // 1. Ouvinte de Autenticação Firebase
+    // 1. Ouvinte de Autenticação
     const unsubAuth = subscribeAuthState((firebaseUser, profile) => {
       if (firebaseUser && profile) {
         setCurrentUser(profile);
@@ -174,15 +196,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Persistência local (fallback offline)
   useEffect(() => {
-    localStorage.setItem('conciliador_users', JSON.stringify(users));
+    localStorage.setItem('conciliador_users_v2', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_articles', JSON.stringify(articles));
+    if (currentUser) {
+      localStorage.setItem('conciliador_current_user_v2', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('conciliador_current_user_v2');
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('conciliador_articles_v2', JSON.stringify(articles));
   }, [articles]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_tools', JSON.stringify(tools));
+    localStorage.setItem('conciliador_tools_v2', JSON.stringify(tools));
   }, [tools]);
 
   useEffect(() => {
@@ -197,12 +227,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = async () => {
     await logoutUser();
     setIsRealFirebaseAuth(false);
-    // Volta para o perfil inicial
-    setCurrentUser(users.find((u) => u.email.includes('fulvio')) || users[0]);
+    setCurrentUser(null);
+    setIsProfileModalOpen(false);
   };
 
-  // Simulação de Perfil para o Fulvio testar como Revisor ou Operador
+  const loginAsUser = (user: UserProfile) => {
+    setCurrentUser(user);
+    setIsAuthModalOpen(false);
+  };
+
+  const loginWithGoogleAuth = async (): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    try {
+      if (isFirebaseConfigured) {
+        const res = await loginWithGoogle();
+        setCurrentUser(res.user);
+        setIsRealFirebaseAuth(true);
+        setIsAuthModalOpen(false);
+        return { success: true, user: res.user };
+      } else {
+        // Fallback local: Se o projeto estiver sem chaves remotas, simula login corporativo do Rodrigo (Admin)
+        const defaultGoogleUser = users.find((u) => u.email.includes('rodrigo')) || users[0];
+        setCurrentUser(defaultGoogleUser);
+        setIsAuthModalOpen(false);
+        return { success: true, user: defaultGoogleUser };
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Erro ao autenticar com o Google.' };
+    }
+  };
+
+  // Simulação de Perfil para testes de permissão
   const switchRolePreview = (role: UserRole) => {
+    if (!currentUser) return;
     const targetUser = users.find((u) => u.role === role && u.status === 'ACTIVE') || {
       ...currentUser,
       role,
@@ -210,13 +266,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(targetUser);
   };
 
-  // RBAC: Fulvio altera o papel de um usuário
+  // RBAC: Administrador altera o papel de um usuário
   const updateUserRole = (uid: string, newRole: UserRole) => {
     setUsers((prev) =>
       prev.map((u) => {
         if (u.uid === uid) {
           const updated = { ...u, role: newRole };
-          if (u.uid === currentUser.uid) {
+          if (currentUser && u.uid === currentUser.uid) {
             setCurrentUser(updated);
           }
           return updated;
@@ -251,15 +307,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Validação estrita de domínio corporativo: apenas @conciliadorcontabil.com.br
+  // Cadastro de Colaborador no Painel
   const addNewUser = async (email: string, displayName: string, password?: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    if (!isCorporateEmailValid(cleanEmail)) {
-      return {
-        success: false,
-        error: 'Acesso restrito! O e-mail precisa pertencer ao domínio @conciliadorcontabil.com.br',
-      };
-    }
+    const userType = determineUserType(cleanEmail);
+    const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
 
     if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
       return { success: false, error: 'Este e-mail já está cadastrado no sistema.' };
@@ -267,10 +319,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isFirebaseConfigured && password) {
       try {
-        const res = await registerWithEmailPassword(cleanEmail, password, displayName);
+        await registerWithEmailPassword(cleanEmail, password, displayName, userType);
         return { success: true };
       } catch (err: any) {
-        return { success: false, error: err.message || 'Erro ao registrar no Firebase.' };
+        return { success: false, error: err.message || 'Erro ao registrar usuário.' };
       }
     }
 
@@ -278,7 +330,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       uid: `usr-${Date.now()}`,
       email: cleanEmail,
       displayName: displayName.trim() || cleanEmail.split('@')[0],
-      role: 'OPERATOR', // Novo usuário sempre começa como Operador comum
+      role: initialRole,
+      userType: userType,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
@@ -288,7 +341,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  // Criação de Artigo pelo Operador: entra compulsoriamente como PENDENTE
+  // Criação de Artigo
   const createArticle = (title: string, categoryId: string, contentHtml: string, tags: string[]) => {
     const cat = categories.find((c) => c.id === categoryId);
     const newArt: Article = {
@@ -297,10 +350,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
       categoryId,
       categoryName: cat?.title || 'Geral',
-      authorId: currentUser.uid,
-      authorName: currentUser.displayName,
-      authorEmail: currentUser.email,
-      currentStatus: 'PENDING', // Fila de revisão imediata
+      authorId: currentUser?.uid || 'usr-anonymous',
+      authorName: currentUser?.displayName || 'Colaborador',
+      authorEmail: currentUser?.email || 'contato@conciliadorcontabil.com.br',
+      currentStatus: 'PENDING',
+      accessLevel: 'INTERNAL',
       tags,
       viewCount: 1,
       contentHtml,
@@ -318,7 +372,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Edição de artigo: quando o autor edita artigo em ajuste, retorna para PENDENTE
+  // Edição de artigo
   const updateArticleContent = (
     articleId: string,
     title: string,
@@ -333,7 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       categoryName: cat?.title,
       contentHtml,
       tags,
-      currentStatus: 'PENDING', // Reenvia para fila de revisão
+      currentStatus: 'PENDING',
       updatedAt: new Date().toISOString(),
     };
 
@@ -359,7 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Julgamento editorial (Revisor / Admin)
+  // Julgamento editorial
   const submitReview = (
     articleId: string,
     action: 'APPROVE' | 'REQUEST_ADJUSTMENT' | 'REJECT',
@@ -370,28 +424,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       action === 'APPROVE' ? 'APPROVED' : action === 'REQUEST_ADJUSTMENT' ? 'IN_ADJUSTMENT' : 'REJECTED';
 
     if (action === 'APPROVE') {
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#5cb780', '#6c63ff', '#ffffff'],
-        });
-      } catch {
-        // Confetti fallback
-      }
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#5cb780', '#6c63ff', '#38bdf8'],
+      });
     }
 
     const newReview = {
       id: `rev-${Date.now()}`,
-      reviewerId: currentUser.uid,
-      reviewerName: currentUser.displayName,
+      reviewerId: currentUser?.uid || 'reviewer',
+      reviewerName: currentUser?.displayName || 'Revisor',
       action,
       generalFeedback: feedback,
-      comments: commentMessages.map((msg, i) => ({
-        id: `c-${Date.now()}-${i}`,
-        authorName: currentUser.displayName,
-        authorRole: currentUser.role,
+      comments: commentMessages.map((msg, idx) => ({
+        id: `c-${Date.now()}-${idx}`,
+        authorName: currentUser?.displayName || 'Revisor',
+        authorRole: currentUser?.role || 'REVIEWER',
         message: msg,
         isResolved: false,
         createdAt: new Date().toISOString(),
@@ -446,7 +496,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Cálculo de Métricas e Desempenho por Usuário
+  // Métricas
   const getUserPerformances = (): UserPerformance[] => {
     return users.map((u) => {
       const userArticles = articles.filter((a) => a.authorEmail.toLowerCase() === u.email.toLowerCase());
@@ -486,11 +536,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         setCurrentUser,
+        isLoggedIn: Boolean(currentUser),
         switchRolePreview,
         isRealFirebaseAuth,
         logout,
+        loginWithGoogleAuth,
+        loginAsUser,
         isAuthModalOpen,
         setIsAuthModalOpen,
+        isProfileModalOpen,
+        setIsProfileModalOpen,
         users,
         updateUserRole,
         toggleUserStatus,

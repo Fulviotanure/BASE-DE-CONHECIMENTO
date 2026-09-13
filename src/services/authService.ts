@@ -4,33 +4,151 @@ import {
   signOut as firebaseSignOut, 
   onAuthStateChanged, 
   updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
   type User 
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import type { UserProfile, UserRole } from '../types';
+import type { UserProfile, UserRole, UserType } from '../types';
 
 export const CORPORATE_DOMAIN = '@conciliadorcontabil.com.br';
 
 export function isCorporateEmailValid(email: string): boolean {
   const clean = email.trim().toLowerCase();
-  // Permite domínio corporativo oficial ou exceção para o superadmin Fulvio
   return clean.endsWith(CORPORATE_DOMAIN) || clean.includes('fulvio');
 }
 
+export function determineUserType(email: string): UserType {
+  return isCorporateEmailValid(email) ? 'INTERNAL' : 'EXTERNAL';
+}
+
+export function isAdminUser(email: string): boolean {
+  const clean = email.trim().toLowerCase();
+  return (
+    clean.includes('fulvio') ||
+    clean.includes('igor@conciliadorcontabil.com.br') ||
+    clean.startsWith('igor@') ||
+    clean.includes('rodrigo') ||
+    clean.includes('fontenelle') ||
+    clean.includes('lopes')
+  );
+}
+
+/**
+ * Autenticação via Conta do Google (Google OAuth)
+ * Identifica automaticamente se é colaborador interno (@conciliadorcontabil.com.br)
+ * ou usuário externo/cliente, e atribui o papel correto.
+ */
+export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: string }> {
+  if (!auth) {
+    throw new Error('Serviço de autenticação não inicializado. Verifique as credenciais de nuvem.');
+  }
+
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const cred = await signInWithPopup(auth, provider);
+  const firebaseUser = cred.user;
+  const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
+  const userType: UserType = determineUserType(cleanEmail);
+  const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
+
+  let profile: UserProfile;
+
+  if (db) {
+    try {
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const userDoc = await getDoc(userRef);
+
+      if (userDoc.exists()) {
+        profile = userDoc.data() as UserProfile;
+        // Se for Rodrigo, Igor ou Fulvio, garante sempre o cargo de ADMIN
+        if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
+          profile.role = 'ADMIN';
+        }
+        profile.userType = userType;
+        profile.displayName = firebaseUser.displayName || profile.displayName;
+        profile.photoURL = firebaseUser.photoURL || profile.photoURL;
+        profile.lastLoginAt = new Date().toISOString();
+
+        await updateDoc(userRef, {
+          role: profile.role,
+          userType: profile.userType,
+          photoURL: profile.photoURL,
+          lastLoginAt: profile.lastLoginAt,
+          serverLastLoginAt: serverTimestamp(),
+        });
+      } else {
+        profile = {
+          uid: firebaseUser.uid,
+          email: cleanEmail,
+          displayName: firebaseUser.displayName || cleanEmail.split('@')[0],
+          photoURL: firebaseUser.photoURL || undefined,
+          role: initialRole,
+          userType: userType,
+          status: 'ACTIVE',
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+        };
+
+        await setDoc(userRef, {
+          ...profile,
+          serverCreatedAt: serverTimestamp(),
+          serverLastLoginAt: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      console.warn('Erro ao sincronizar perfil Google com Firestore:', err);
+      profile = {
+        uid: firebaseUser.uid,
+        email: cleanEmail,
+        displayName: firebaseUser.displayName || cleanEmail.split('@')[0],
+        photoURL: firebaseUser.photoURL || undefined,
+        role: initialRole,
+        userType: userType,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      };
+    }
+  } else {
+    profile = {
+      uid: firebaseUser.uid,
+      email: cleanEmail,
+      displayName: firebaseUser.displayName || cleanEmail.split('@')[0],
+      photoURL: firebaseUser.photoURL || undefined,
+      role: initialRole,
+      userType: userType,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+    };
+  }
+
+  if (profile.status === 'INACTIVE') {
+    await firebaseSignOut(auth);
+    throw new Error('Este usuário foi inativado pela administração. Contate o suporte interno.');
+  }
+
+  return { user: profile };
+}
+
+/**
+ * Cadastro de usuário via E-mail e Senha.
+ * Suporta colaboradores internos (@conciliadorcontabil.com.br)
+ * e usuários externos/clientes (qualquer provedor).
+ */
 export async function registerWithEmailPassword(
   email: string, 
   pass: string, 
-  displayName: string
+  displayName: string,
+  forceUserType?: UserType
 ): Promise<{ user: UserProfile; error?: string }> {
   const cleanEmail = email.trim().toLowerCase();
-
-  if (!isCorporateEmailValid(cleanEmail)) {
-    throw new Error(`Acesso restrito: utilize seu e-mail corporativo com domínio ${CORPORATE_DOMAIN}`);
-  }
+  const userType: UserType = forceUserType || determineUserType(cleanEmail);
 
   if (!auth || !db) {
-    throw new Error('Firebase não inicializado. Configure as credenciais do projeto no painel.');
+    throw new Error('Serviço de autenticação não inicializado. Verifique as credenciais de nuvem.');
   }
 
   const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
@@ -40,20 +158,19 @@ export async function registerWithEmailPassword(
     displayName: formattedName,
   });
 
-  // Fulvio é automaticamente ADMIN inicial, todos os outros começam como OPERATOR
-  const initialRole: UserRole = cleanEmail.includes('fulvio') ? 'ADMIN' : 'OPERATOR';
+  const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
 
   const userProfile: UserProfile = {
     uid: cred.user.uid,
     email: cleanEmail,
     displayName: formattedName,
     role: initialRole,
+    userType: userType,
     status: 'ACTIVE',
     createdAt: new Date().toISOString(),
     lastLoginAt: new Date().toISOString(),
   };
 
-  // Grava perfil no Firestore na coleção users/{uid}
   const userRef = doc(db, 'users', cred.user.uid);
   await setDoc(userRef, {
     ...userProfile,
@@ -64,18 +181,17 @@ export async function registerWithEmailPassword(
   return { user: userProfile };
 }
 
+/**
+ * Login de usuário via E-mail e Senha
+ */
 export async function loginWithEmailPassword(
   email: string, 
   pass: string
 ): Promise<{ user: UserProfile; error?: string }> {
   const cleanEmail = email.trim().toLowerCase();
 
-  if (!isCorporateEmailValid(cleanEmail)) {
-    throw new Error(`Acesso restrito: apenas contas corporativas (${CORPORATE_DOMAIN}) podem acessar.`);
-  }
-
   if (!auth || !db) {
-    throw new Error('Firebase não inicializado. Configure as credenciais do projeto.');
+    throw new Error('Serviço de autenticação não inicializado. Verifique as credenciais de nuvem.');
   }
 
   const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
@@ -83,22 +199,28 @@ export async function loginWithEmailPassword(
   const userDoc = await getDoc(userRef);
 
   let profile: UserProfile;
+  const userType: UserType = determineUserType(cleanEmail);
 
   if (userDoc.exists()) {
     profile = userDoc.data() as UserProfile;
-    // Atualiza último login
+    if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
+      profile.role = 'ADMIN';
+    }
+    profile.userType = profile.userType || userType;
     await updateDoc(userRef, {
+      role: profile.role,
+      userType: profile.userType,
       lastLoginAt: new Date().toISOString(),
       serverLastLoginAt: serverTimestamp(),
     });
   } else {
-    // Cria doc caso ainda não exista no Firestore
-    const initialRole: UserRole = cleanEmail.includes('fulvio') ? 'ADMIN' : 'OPERATOR';
+    const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
     profile = {
       uid: cred.user.uid,
       email: cleanEmail,
       displayName: cred.user.displayName || cleanEmail.split('@')[0],
       role: initialRole,
+      userType: userType,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
@@ -112,7 +234,7 @@ export async function loginWithEmailPassword(
 
   if (profile.status === 'INACTIVE') {
     await firebaseSignOut(auth);
-    throw new Error('Este usuário foi inativado pelo administrador Fulvio. Contate o suporte interno.');
+    throw new Error('Este usuário foi inativado pela administração. Contate o suporte interno.');
   }
 
   return { user: profile };
@@ -138,12 +260,21 @@ export function subscribeAuthState(
       return;
     }
 
+    const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
+    const userType: UserType = determineUserType(cleanEmail);
+    const calculatedRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
+
     if (db) {
       try {
         const userRef = doc(db, 'users', firebaseUser.uid);
         const snapshot = await getDoc(userRef);
         if (snapshot.exists()) {
-          onUserChanged(firebaseUser, snapshot.data() as UserProfile);
+          const profile = snapshot.data() as UserProfile;
+          if (isAdminUser(cleanEmail)) {
+            profile.role = 'ADMIN';
+          }
+          profile.userType = profile.userType || userType;
+          onUserChanged(firebaseUser, profile);
           return;
         }
       } catch (err) {
@@ -151,13 +282,13 @@ export function subscribeAuthState(
       }
     }
 
-    // Perfil fallback baseado no firebaseUser
-    const fallbackRole: UserRole = firebaseUser.email?.toLowerCase().includes('fulvio') ? 'ADMIN' : 'OPERATOR';
     const fallbackProfile: UserProfile = {
       uid: firebaseUser.uid,
-      email: firebaseUser.email || '',
-      displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
-      role: fallbackRole,
+      email: cleanEmail,
+      displayName: firebaseUser.displayName || cleanEmail.split('@')[0] || 'Usuário',
+      photoURL: firebaseUser.photoURL || undefined,
+      role: calculatedRole,
+      userType: userType,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),

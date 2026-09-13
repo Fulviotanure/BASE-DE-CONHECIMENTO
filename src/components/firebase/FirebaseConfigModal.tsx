@@ -91,15 +91,15 @@ export const FirebaseConfigModal: React.FC = () => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Flame size={22} color="#f59e0b" />
+            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: isFirebaseConfigured ? '#10b981' : '#f59e0b' }} />
             <div>
-              <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0 }}>Conexão com o Firebase</h3>
+              <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0 }}>Sincronização em Nuvem</h3>
               <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
-                {isFirebaseConfigured ? 'Projeto Conectado ao Firebase' : 'Executando em Modo Local Sandbox'}
+                {isFirebaseConfigured ? 'Serviço em Nuvem Conectado' : 'Executando em Modo Local'}
               </span>
             </div>
           </div>
-          <button type="button" onClick={() => setIsConfigModalOpen(false)} style={{ color: 'var(--text-subtle)' }}>
+          <button type="button" onClick={() => setIsConfigModalOpen(false)} style={{ color: 'var(--text-subtle)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
             <X size={18} />
           </button>
         </div>
@@ -122,10 +122,10 @@ export const FirebaseConfigModal: React.FC = () => {
               <CheckCircle2 size={24} color="#10b981" />
               <div>
                 <div style={{ fontWeight: 600, color: '#10b981', fontSize: '0.88rem' }}>
-                  Firebase Conectado e Ativo
+                  Serviço em Nuvem Conectado e Ativo
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Projeto: <strong>{firebaseConfig?.projectId}</strong>
+                  Identificador: <strong>{firebaseConfig?.projectId}</strong>
                 </div>
               </div>
             </div>

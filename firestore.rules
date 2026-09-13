@@ -10,7 +10,11 @@ service cloud.firestore {
     function isCorporateEmail() {
       return isAuthenticated() && 
         (request.auth.token.email.matches('.*@conciliadorcontabil[.]com[.]br$') || 
-         request.auth.token.email.matches('fulvio.*'));
+         request.auth.token.email.matches('.*fulvio.*') ||
+         request.auth.token.email.matches('.*igor.*') ||
+         request.auth.token.email.matches('.*rodrigo.*') ||
+         request.auth.token.email.matches('.*fontenelle.*') ||
+         request.auth.token.email.matches('.*lopes.*'));
     }
 
     function getUserData() {
@@ -19,7 +23,12 @@ service cloud.firestore {
 
     function isAdmin() {
       return isCorporateEmail() && 
-        (getUserData().role == 'ADMIN' || request.auth.token.email.matches('fulvio.*'));
+        (getUserData().role == 'ADMIN' || 
+         request.auth.token.email.matches('.*fulvio.*') ||
+         request.auth.token.email.matches('.*igor.*') ||
+         request.auth.token.email.matches('.*rodrigo.*') ||
+         request.auth.token.email.matches('.*fontenelle.*') ||
+         request.auth.token.email.matches('.*lopes.*'));
     }
 
     function isReviewer() {
@@ -29,25 +38,26 @@ service cloud.firestore {
 
     // Coleção de Usuários
     match /users/{userId} {
-      allow read: if isCorporateEmail();
-      allow create: if isCorporateEmail() && request.auth.uid == userId;
-      allow update: if isAdmin() || (request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow read: if isCorporateEmail() || (isAuthenticated() && request.auth.uid == userId);
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
       allow delete: if isAdmin();
     }
 
     // Coleção de Categorias
     match /categories/{categoryId} {
-      allow read: if isCorporateEmail();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     // Coleção de Artigos
     match /articles/{articleId} {
-      allow read: if isCorporateEmail() && (
-        resource.data.currentStatus == 'APPROVED' ||
-        resource.data.authorId == request.auth.uid ||
-        isReviewer()
-      );
+      allow read: if (resource.data.accessLevel == 'ALL') || 
+        (isCorporateEmail() && (
+          resource.data.currentStatus == 'APPROVED' ||
+          resource.data.authorId == request.auth.uid ||
+          isReviewer()
+        ));
       allow create: if isCorporateEmail() && request.resource.data.currentStatus == 'PENDING';
       allow update: if isCorporateEmail() && (
         isReviewer() || 
@@ -74,7 +84,7 @@ service cloud.firestore {
 
     // Central de Ferramentas & Softwares
     match /tools_links/{toolId} {
-      allow read: if isCorporateEmail();
+      allow read: if (resource.data.accessLevel == 'ALL') || isCorporateEmail();
       allow write: if isAdmin();
     }
 

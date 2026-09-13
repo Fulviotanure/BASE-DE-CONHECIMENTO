@@ -6,11 +6,11 @@ import {
   Wrench,
   BarChart3,
   Users,
-  Flame,
   PlusCircle,
-  Clock,
-  Sparkles,
   ExternalLink,
+  LifeBuoy,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -21,17 +21,19 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onOpenNewArticle }) => {
-  const { currentUser, articles, users, setIsConfigModalOpen } = useApp();
+  const { currentUser, articles, setIsAuthModalOpen } = useApp();
+
+  const isInternal = currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email.includes('conciliadorcontabil.com.br'));
+  const canReview = isInternal && (currentUser?.role === 'ADMIN' || currentUser?.role === 'REVIEWER');
+  const isAdmin = isInternal && currentUser?.role === 'ADMIN';
 
   const pendingCount = articles.filter((a) => a.currentStatus === 'PENDING').length;
   const myAdjustmentsCount = articles.filter(
-    (a) => a.authorEmail === currentUser.email && a.currentStatus === 'IN_ADJUSTMENT'
+    (a) => currentUser && a.authorEmail === currentUser.email && a.currentStatus === 'IN_ADJUSTMENT'
   ).length;
 
-  const canReview = currentUser.role === 'ADMIN' || currentUser.role === 'REVIEWER';
-  const isAdmin = currentUser.role === 'ADMIN';
-
-  const navItems = [
+  // Itens de navegação para Colaboradores Internos
+  const internalNavItems = [
     {
       id: 'kb',
       label: 'Base de Conhecimento',
@@ -86,6 +88,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
       : []),
   ];
 
+  // Itens de navegação para Usuários Externos ou Visitantes
+  const externalNavItems = [
+    {
+      id: 'external-portal',
+      label: 'Portal do Cliente',
+      icon: Globe,
+      badge: 'Público',
+      badgeColor: '#38bdf8',
+    },
+    {
+      id: 'tools',
+      label: 'Modelos & Downloads',
+      icon: Wrench,
+      badge: 'Templates',
+      badgeColor: 'var(--color-secondary)',
+    },
+  ];
+
+  const currentNavItems = isInternal ? internalNavItems : externalNavItems;
+
   return (
     <aside
       style={{
@@ -100,36 +122,63 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
       }}
     >
       <div>
-        {/* New Article Action Button */}
-        <button
-          type="button"
-          onClick={onOpenNewArticle}
-          className="btn btn-primary"
-          style={{
-            width: '100%',
-            padding: '10px 14px',
-            marginBottom: '20px',
-            borderRadius: 'var(--radius-md)',
-            fontWeight: 700,
-            fontSize: '0.86rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-          }}
-        >
-          <PlusCircle size={17} />
-          <span>Redigir Novo Artigo</span>
-        </button>
+        {/* New Article Action Button (Apenas para colaboradores internos logados) */}
+        {isInternal ? (
+          <button
+            type="button"
+            onClick={onOpenNewArticle}
+            className="btn btn-primary"
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              marginBottom: '20px',
+              borderRadius: 'var(--radius-md)',
+              fontWeight: 700,
+              fontSize: '0.86rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <PlusCircle size={17} />
+            <span>Redigir Novo Artigo</span>
+          </button>
+        ) : (
+          <div style={{ marginBottom: '16px' }}>
+            <button
+              type="button"
+              onClick={() => setIsAuthModalOpen(true)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(92, 183, 128, 0.1)',
+                border: '1px solid rgba(92, 183, 128, 0.3)',
+                color: 'var(--color-primary)',
+                fontWeight: 700,
+                fontSize: '0.8rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              <Lock size={14} />
+              <span>Acesso Interno</span>
+            </button>
+          </div>
+        )}
 
         {/* Section Label */}
         <div style={{ padding: '0 8px 8px 8px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Navegação Principal
+          {isInternal ? 'Navegação Corporativa' : 'Portal Externo'}
         </div>
 
         {/* Navigation Links */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {navItems.map((item) => {
+          {currentNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeView === item.id;
             return (
@@ -149,6 +198,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
                   background: isActive ? 'var(--color-primary-subtle)' : 'transparent',
                   transition: 'all 0.18s ease',
                   textAlign: 'left',
+                  border: 'none',
+                  cursor: 'pointer',
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
@@ -185,12 +236,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
         </nav>
       </div>
 
-      {/* Bottom Hub: Firebase Setup & Platform Info */}
+      {/* Bottom Hub: Institutional and Support Links */}
       <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {/* Firebase Config Trigger */}
-        <button
-          type="button"
-          onClick={() => setIsConfigModalOpen(true)}
+        {/* Direct Ticket Help Link */}
+        <a
+          href="https://conciliador-contabil2.movidesk.com/"
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -202,18 +254,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
             color: 'var(--text-muted)',
             fontSize: '0.8rem',
             fontWeight: 600,
-            cursor: 'pointer',
-            textAlign: 'left',
+            textDecoration: 'none',
+            transition: 'all 0.18s ease',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
           onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
         >
-          <Flame size={16} color="#f59e0b" />
+          <LifeBuoy size={16} color="var(--color-primary)" />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ color: 'var(--text-main)', fontSize: '0.78rem' }}>Configurar Firebase</span>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>Chaves e Projeto</span>
+            <span style={{ color: 'var(--text-main)', fontSize: '0.78rem' }}>Suporte Técnico N3</span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>Central de Chamados</span>
           </div>
-        </button>
+        </a>
 
         {/* Institutional Link */}
         <a
@@ -228,6 +280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
             fontSize: '0.74rem',
             color: 'var(--text-subtle)',
             borderRadius: 'var(--radius-sm)',
+            textDecoration: 'none',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-primary)')}
           onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-subtle)')}

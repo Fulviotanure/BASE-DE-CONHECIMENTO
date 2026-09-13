@@ -54,7 +54,7 @@ export const UserManagementView: React.FC = () => {
             Gestão de Usuários & Permissões (RBAC)
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Painel exclusivo do Administrador (<strong>{currentUser.displayName}</strong>) para atribuição de cargos aos e-mails corporativos.
+            Painel exclusivo do Administrador (<strong>{currentUser?.displayName || 'Administrador'}</strong>) para atribuição de cargos aos colaboradores.
           </p>
         </div>
 
@@ -83,10 +83,10 @@ export const UserManagementView: React.FC = () => {
       >
         <ShieldCheck size={28} color="var(--color-primary)" />
         <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-          <strong>Política de Segurança Ativa:</strong> Apenas contas com e-mail corporativo{' '}
-          <code>@conciliadorcontabil.com.br</code> têm autorização para login. Todos os novos usuários ingressam
-          automaticamente como <strong>Usuário Comum (Operador)</strong>, podendo ser promovidos para Revisor ou
-          Administrador exclusivamente por você.
+          <strong>Governança de Acessos:</strong> Colaboradores com e-mail corporativo{' '}
+          <code>@conciliadorcontabil.com.br</code> possuem acesso à área interna. Usuários Rodrigo, Igor e Fulvio
+          possuem privilégios de <strong>Administrador</strong>. Novos colaboradores são cadastrados como <strong>Operador</strong>,
+          podendo ser promovidos para Revisor ou Administrador.
         </div>
       </div>
 
@@ -97,6 +97,7 @@ export const UserManagementView: React.FC = () => {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-subtle)' }}>
                 <th style={{ padding: '12px 14px', fontWeight: 600 }}>Colaborador</th>
+                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Tipo de Acesso</th>
                 <th style={{ padding: '12px 14px', fontWeight: 600 }}>Cargo / Função</th>
                 <th style={{ padding: '12px 14px', fontWeight: 600 }}>Status da Conta</th>
                 <th style={{ padding: '12px 14px', fontWeight: 600 }}>Data do Cadastro</th>
@@ -107,6 +108,7 @@ export const UserManagementView: React.FC = () => {
             <tbody>
               {users.map((u) => {
                 const isFulvio = u.email.toLowerCase().includes('fulvio');
+                const isInternal = u.userType === 'INTERNAL' || u.email.endsWith('@conciliadorcontabil.com.br');
                 return (
                   <tr
                     key={u.uid}
@@ -141,6 +143,27 @@ export const UserManagementView: React.FC = () => {
                           <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{u.email}</div>
                         </div>
                       </div>
+                    </td>
+
+                    {/* Access Type (Interno vs Externo) */}
+                    <td style={{ padding: '14px' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 9px',
+                          borderRadius: 'var(--radius-full)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          background: isInternal ? 'rgba(92, 183, 128, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                          color: isInternal ? '#5cb780' : '#38bdf8',
+                          border: `1px solid ${isInternal ? 'rgba(92, 183, 128, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {isInternal ? 'Colaborador Interno' : 'Externo (Cliente)'}
+                      </span>
                     </td>
 
                     {/* Role Dropdown */}
