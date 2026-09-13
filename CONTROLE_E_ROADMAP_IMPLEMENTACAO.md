@@ -4,11 +4,13 @@
 > **Regra de Manutenção do Documento:** Este documento é o **quadro vivo de controle** do projeto. Sempre que houver qualquer alteração de escopo, adição de regra de negócio, nova função ou conclusão de etapa, este arquivo deve ser atualizado imediatamente antes de prosseguir.
 >
 > **Última Atualização:** 13/09/2026  
-> **Versão do Documento:** 1.2.0 (Integração Firebase Auth & Firestore Pronta)  
+> **Versão do Documento:** 1.3.0 (Deploy em Produção & GitHub Concluídos)  
 > **Projeto Firebase:** `base-de-conhecimento-cc`  
 > **Console URL:** https://console.firebase.google.com/u/0/project/base-de-conhecimento-cc/overview?hl=pt-br  
-> **Hosting de Testes:** https://base-de-conhecimento-cc.web.app  
-> **Estado Atual:** Código 100% pronto com Firebase Auth (Email/Senha), Firestore Real-Time e Hosting configurado. Aguardando ativação de permissões/chaves.
+> **Hosting de Produção:** https://base-de-conhecimento-cc.web.app  
+> **Repositório GitHub:** https://github.com/Fulviotanure/BASE-DE-CONHECIMENTO  
+> **CLI Autenticado:** `fulvio@conciliadorcontabil.com.br`  
+> **Estado Atual:** 🚀 Sistema 100% publicado na nuvem e versionado no GitHub.
 
 ---
 
