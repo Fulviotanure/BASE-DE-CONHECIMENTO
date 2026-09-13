@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users,
   ShieldCheck,
@@ -6,21 +6,145 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Clock,
   Mail,
   SlidersHorizontal,
+  Globe,
+  Search,
+  Eye,
+  User,
+  X,
+  FileText,
+  Calendar,
+  Sparkles,
+  Shield,
+  Clock
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import type { UserRole } from '../../types';
+import type { UserProfile, UserRole } from '../../types';
 
 export const UserManagementView: React.FC = () => {
-  const { users, updateUserRole, toggleUserStatus, addNewUser, currentUser } = useApp();
+  const { users, articles, updateUserRole, toggleUserStatus, addNewUser, currentUser } = useApp();
 
+  const [activeTab, setActiveTab] = useState<'COLABORADORES' | 'USUARIOS'>('COLABORADORES');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Modais
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<UserProfile | null>(null);
+
+  // Form de cadastro
   const [newEmail, setNewEmail] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Separação em Colaboradores (internos) e Usuários (externos)
+  const { colaboradoresList, usuariosList } = useMemo(() => {
+    const colab: UserProfile[] = [];
+    const usu: UserProfile[] = [];
+
+    users.forEach((u) => {
+      const isInternal =
+        u.userType === 'INTERNAL' ||
+        u.email.endsWith('@conciliadorcontabil.com.br') ||
+        u.email.toLowerCase().includes('fulvio');
+
+      if (isInternal) {
+        colab.push(u);
+      } else {
+        usu.push(u);
+      }
+    });
+
+    return { colaboradoresList: colab, usuariosList: usu };
+  }, [users]);
+
+  // Função de Ordenação solicitada:
+  // 1. Fulvio sempre no topo absoluto
+  // 2. Por hierarquia de cargo: Administradores -> Revisores -> Operadores -> Leitores
+  // 3. Ordem alfabética por nome dentro do mesmo cargo
+  const sortUsers = (list: UserProfile[]): UserProfile[] => {
+    return [...list].sort((a, b) => {
+      const aIsFulvio = a.email.toLowerCase().includes('fulvio');
+      const bIsFulvio = b.email.toLowerCase().includes('fulvio');
+      if (aIsFulvio && !bIsFulvio) return -1;
+      if (!aIsFulvio && bIsFulvio) return 1;
+
+      // Peso do Cargo
+      const getRoleWeight = (role: UserRole): number => {
+        switch (role) {
+          case 'SUPER_ADMIN':
+            return 4;
+          case 'ADMIN':
+            return 3;
+          case 'REVIEWER':
+            return 2;
+          case 'OPERATOR':
+            return 1;
+          case 'READER':
+            return 0;
+          default:
+            return 0;
+        }
+      };
+
+      const diff = getRoleWeight(b.role) - getRoleWeight(a.role);
+      if (diff !== 0) return diff;
+
+      // Ordem alfabética A-Z por nome
+      return a.displayName.localeCompare(b.displayName, 'pt-BR', { sensitivity: 'base' });
+    });
+  };
+
+  // Lista atual conforme a aba selecionada e filtro de busca
+  const currentList = useMemo(() => {
+    const base = activeTab === 'COLABORADORES' ? colaboradoresList : usuariosList;
+    const sorted = sortUsers(base);
+
+    if (!searchTerm.trim()) return sorted;
+    const term = searchTerm.toLowerCase();
+    return sorted.filter(
+      (u) =>
+        u.displayName.toLowerCase().includes(term) ||
+        u.email.toLowerCase().includes(term)
+    );
+  }, [activeTab, colaboradoresList, usuariosList, searchTerm]);
+
+  // Situação do Usuário:
+  // - ONLINE: se estiver no site agora (usuário logado na sessão ativa)
+  // - LOGADO: se já logou ao menos uma vez (lastLoginAt presente)
+  // - OFFLINE: se nunca logou (lastLoginAt nulo/vazio)
+  const getUserSituation = (u: UserProfile): { status: 'ONLINE' | 'LOGADO' | 'OFFLINE'; label: string; bg: string; color: string; border: string } => {
+    const isCurrentSession = currentUser && currentUser.uid === u.uid;
+
+    if (isCurrentSession) {
+      return {
+        status: 'ONLINE',
+        label: 'Online (No site)',
+        bg: 'rgba(16, 185, 129, 0.15)',
+        color: '#10b981',
+        border: 'rgba(16, 185, 129, 0.35)',
+      };
+    }
+
+    if (u.lastLoginAt) {
+      return {
+        status: 'LOGADO',
+        label: 'Logado (Já acessou)',
+        bg: 'rgba(56, 189, 248, 0.15)',
+        color: '#38bdf8',
+        border: 'rgba(56, 189, 248, 0.35)',
+      };
+    }
+
+    return {
+      status: 'OFFLINE',
+      label: 'Offline (Nunca acessou)',
+      bg: 'rgba(148, 163, 184, 0.12)',
+      color: 'var(--text-muted)',
+      border: 'rgba(148, 163, 184, 0.25)',
+    };
+  };
 
   const handleAddUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +157,11 @@ export const UserManagementView: React.FC = () => {
       return;
     }
 
-    setSuccessMsg('Colaborador adicionado com sucesso com perfil inicial de Operador!');
+    setSuccessMsg(
+      activeTab === 'COLABORADORES'
+        ? 'Colaborador adicionado com sucesso com perfil inicial de Operador!'
+        : 'Usuário externo adicionado com sucesso com perfil inicial de Leitor!'
+    );
     setNewEmail('');
     setNewDisplayName('');
     setTimeout(() => {
@@ -43,18 +171,18 @@ export const UserManagementView: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto', width: '100%' }} className="animate-fade-in">
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+    <div style={{ padding: '32px', maxWidth: '1240px', margin: '0 auto', width: '100%' }} className="animate-fade-in">
+      {/* Header Superior */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Controle de Acesso & Governança Corporativa
           </span>
-          <h1 style={{ fontSize: '1.8rem', color: 'var(--text-main)', margin: '4px 0 6px 0' }}>
+          <h1 style={{ fontSize: '1.8rem', color: 'var(--text-main)', margin: '4px 0 6px 0', fontWeight: 800 }}>
             Gestão de Usuários & Permissões (RBAC)
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Painel exclusivo do Administrador (<strong>{currentUser?.displayName || 'Administrador'}</strong>) para atribuição de cargos aos colaboradores.
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
+            Painel do Administrador (<strong>{currentUser?.displayName || 'Fulvio Tanure'}</strong>) para governança e atribuição de cargos.
           </p>
         </div>
 
@@ -62,212 +190,582 @@ export const UserManagementView: React.FC = () => {
           type="button"
           className="btn btn-primary"
           onClick={() => setIsAddModalOpen(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
         >
           <UserPlus size={16} />
-          <span>Cadastrar Colaborador</span>
+          <span>{activeTab === 'COLABORADORES' ? 'Cadastrar Colaborador' : 'Cadastrar Usuário Externo'}</span>
         </button>
       </div>
 
-      {/* Corporate Rule Warning Card */}
+      {/* Barra Informativa de Perfis de Usuário */}
       <div
         style={{
-          background: 'rgba(92, 183, 128, 0.08)',
-          border: '1px solid rgba(92, 183, 128, 0.25)',
-          padding: '16px 20px',
-          borderRadius: 'var(--radius-lg)',
-          marginBottom: '24px',
+          background: 'rgba(92, 183, 128, 0.05)',
+          border: '1px solid rgba(92, 183, 128, 0.2)',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 18px',
+          marginBottom: '20px',
           display: 'flex',
           alignItems: 'center',
-          gap: '14px',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
         }}
       >
-        <ShieldCheck size={28} color="var(--color-primary)" />
-        <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-          <strong>Governança de Acessos & RBAC:</strong> Fulvio é o <strong>Super Administrador Fixo</strong> com gestão plena.
-          Rodrigo e Igor atuam como <strong>Administradores</strong>. Colaboradores corporativos atuam como <strong>Operadores</strong> ou <strong>Revisores</strong>.
-          Clientes externos são classificados como <strong>Leitores</strong> e possuem visualização estritamente limitada a manuais públicos/externos.
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: 'var(--text-main)' }}>
+          <User size={18} color="var(--color-primary)" />
+          <span>
+            <strong>Perfis de Usuário:</strong> Clique em <strong>"Ver Perfil"</strong> na tabela para inspecionar os detalhes, histórico e artigos de qualquer membro. O seu próprio perfil também está disponível no canto superior direito do cabeçalho.
+          </span>
         </div>
       </div>
 
-      {/* Users Table */}
-      <div className="card" style={{ padding: '24px', overflow: 'hidden' }}>
+      {/* Seletor de Abas: Colaboradores vs Usuários */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '14px' }}>
+        <div style={{ display: 'inline-flex', background: 'var(--bg-surface)', padding: '4px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', gap: '4px' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('COLABORADORES')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '9px 18px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: activeTab === 'COLABORADORES' ? '1px solid var(--color-primary)' : '1px solid transparent',
+              background: activeTab === 'COLABORADORES' ? 'rgba(92, 183, 128, 0.15)' : 'transparent',
+              color: activeTab === 'COLABORADORES' ? 'var(--color-primary)' : 'var(--text-muted)',
+            }}
+          >
+            <Users size={16} />
+            <span>Colaboradores</span>
+            <span
+              style={{
+                fontSize: '0.74rem',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-full)',
+                background: activeTab === 'COLABORADORES' ? 'var(--color-primary)' : 'var(--bg-card)',
+                color: activeTab === 'COLABORADORES' ? '#ffffff' : 'var(--text-muted)',
+                fontWeight: 700,
+              }}
+            >
+              {colaboradoresList.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('USUARIOS')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '9px 18px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              border: activeTab === 'USUARIOS' ? '1px solid #38bdf8' : '1px solid transparent',
+              background: activeTab === 'USUARIOS' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+              color: activeTab === 'USUARIOS' ? '#38bdf8' : 'var(--text-muted)',
+            }}
+          >
+            <Globe size={16} />
+            <span>Usuários (Clientes)</span>
+            <span
+              style={{
+                fontSize: '0.74rem',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-full)',
+                background: activeTab === 'USUARIOS' ? '#38bdf8' : 'var(--bg-card)',
+                color: activeTab === 'USUARIOS' ? '#0f172a' : 'var(--text-muted)',
+                fontWeight: 700,
+              }}
+            >
+              {usuariosList.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Campo de Busca Rápida */}
+        <div style={{ position: 'relative', minWidth: '260px' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
+          <input
+            type="text"
+            placeholder={`Buscar em ${activeTab === 'COLABORADORES' ? 'Colaboradores' : 'Usuários'}...`}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '9px 12px 9px 36px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-main)',
+              fontSize: '0.84rem',
+              outline: 'none',
+            }}
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-subtle)',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabela de Usuários */}
+      <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem', textAlign: 'left' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-subtle)' }}>
-                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Colaborador</th>
-                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Tipo de Acesso</th>
-                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Cargo / Função</th>
-                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Status da Conta</th>
-                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Data do Cadastro</th>
-                <th style={{ padding: '12px 14px', fontWeight: 600 }}>Último Acesso</th>
-                <th style={{ padding: '12px 14px', fontWeight: 600, textAlign: 'right' }}>Ações</th>
+              <tr style={{ background: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-subtle)' }}>
+                <th style={{ padding: '14px 16px', fontWeight: 600 }}>{activeTab === 'COLABORADORES' ? 'Colaborador' : 'Usuário / Cliente'}</th>
+                <th style={{ padding: '14px 16px', fontWeight: 600 }}>Cargo / Função</th>
+                <th style={{ padding: '14px 16px', fontWeight: 600 }}>Situação</th>
+                <th style={{ padding: '14px 16px', fontWeight: 600 }}>Status da Conta</th>
+                <th style={{ padding: '14px 16px', fontWeight: 600, textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
-                const isFulvio = u.email.toLowerCase().includes('fulvio');
-                const isInternal = u.userType === 'INTERNAL' || u.email.endsWith('@conciliadorcontabil.com.br');
-                return (
-                  <tr
-                    key={u.uid}
-                    style={{ borderBottom: '1px solid var(--border-subtle)' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {/* User Info */}
-                    <td style={{ padding: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {currentList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    Nenhum registro encontrado para o filtro informado.
+                  </td>
+                </tr>
+              ) : (
+                currentList.map((u) => {
+                  const isFulvio = u.email.toLowerCase().includes('fulvio');
+                  const isInternal = u.userType === 'INTERNAL' || u.email.endsWith('@conciliadorcontabil.com.br');
+                  const situation = getUserSituation(u);
+
+                  return (
+                    <tr
+                      key={u.uid}
+                      style={{
+                        borderBottom: '1px solid var(--border-subtle)',
+                        background: isFulvio ? 'rgba(92, 183, 128, 0.03)' : 'transparent',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = isFulvio ? 'rgba(92, 183, 128, 0.03)' : 'transparent')}
+                    >
+                      {/* Colaborador / Usuário */}
+                      <td style={{ padding: '14px 16px' }}>
                         <div
+                          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+                          onClick={() => setSelectedUserForProfile(u)}
+                          title="Clique para visualizar o perfil completo"
+                        >
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: 'var(--radius-full)',
+                              background: isFulvio
+                                ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
+                                : u.role === 'ADMIN'
+                                ? 'linear-gradient(135deg, #5cb780 0%, #38bdf8 100%)'
+                                : u.role === 'REVIEWER'
+                                ? 'linear-gradient(135deg, #6c63ff 0%, #a855f7 100%)'
+                                : 'var(--bg-surface)',
+                              border: `1px solid ${isFulvio ? '#5cb780' : 'var(--border-subtle)'}`,
+                              color: '#ffffff',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.85rem',
+                              flexShrink: 0,
+                              position: 'relative',
+                            }}
+                          >
+                            {u.displayName.charAt(0).toUpperCase()}
+                            {situation.status === 'ONLINE' && (
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  bottom: '-1px',
+                                  right: '-1px',
+                                  width: '10px',
+                                  height: '10px',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: '#10b981',
+                                  border: '2px solid var(--bg-surface)',
+                                }}
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>{u.displayName}</span>
+                              {isFulvio && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    background: 'rgba(245, 158, 11, 0.2)',
+                                    color: '#f59e0b',
+                                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                                    padding: '1px 6px',
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  SUPERADMIN
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{u.email}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Cargo / Função com Dropdown de Atribuição */}
+                      <td style={{ padding: '14px 16px' }}>
+                        <select
+                          value={u.role}
+                          disabled={isFulvio}
+                          onChange={(e) => updateUserRole(u.uid, e.target.value as UserRole)}
                           style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: 'var(--radius-full)',
-                            background: isFulvio
-                              ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
-                              : 'var(--bg-surface)',
+                            padding: '6px 10px',
+                            background: 'var(--bg-input)',
                             border: '1px solid var(--border-subtle)',
-                            color: '#ffffff',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.85rem',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                            color:
+                              u.role === 'SUPER_ADMIN'
+                                ? '#f59e0b'
+                                : u.role === 'ADMIN'
+                                ? 'var(--color-primary)'
+                                : u.role === 'REVIEWER'
+                                ? 'var(--color-secondary)'
+                                : u.role === 'READER'
+                                ? '#38bdf8'
+                                : 'var(--text-main)',
+                            cursor: isFulvio ? 'not-allowed' : 'pointer',
                           }}
                         >
-                          {u.displayName.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{u.displayName}</div>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{u.email}</div>
-                        </div>
-                      </div>
-                    </td>
+                          <option value="OPERATOR" style={{ background: '#1e2227', color: '#fff' }}>
+                            👷 Operador
+                          </option>
+                          <option value="REVIEWER" style={{ background: '#1e2227', color: '#6c63ff' }}>
+                            ✍️ Revisor / Editor
+                          </option>
+                          <option value="ADMIN" style={{ background: '#1e2227', color: '#5cb780' }}>
+                            🛡️ Administrador
+                          </option>
+                          <option value="READER" style={{ background: '#1e2227', color: '#38bdf8' }}>
+                            👤 Leitor (Apenas Leitura)
+                          </option>
+                          {isFulvio && (
+                            <option value="SUPER_ADMIN" style={{ background: '#1e2227', color: '#f59e0b' }}>
+                              👑 Super Administrador
+                            </option>
+                          )}
+                        </select>
+                      </td>
 
-                    {/* Access Type (Interno vs Externo) */}
-                    <td style={{ padding: '14px' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '3px 9px',
-                          borderRadius: 'var(--radius-full)',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          background: isInternal ? 'rgba(92, 183, 128, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                          color: isInternal ? '#5cb780' : '#38bdf8',
-                          border: `1px solid ${isInternal ? 'rgba(92, 183, 128, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {isInternal ? 'Colaborador Interno' : 'Externo (Cliente)'}
-                      </span>
-                    </td>
-
-                    {/* Role Dropdown */}
-                    <td style={{ padding: '14px' }}>
-                      <select
-                        value={u.role}
-                        disabled={isFulvio}
-                        onChange={(e) => updateUserRole(u.uid, e.target.value as UserRole)}
-                        style={{
-                          padding: '6px 10px',
-                          background: 'var(--bg-input)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          color:
-                            u.role === 'SUPER_ADMIN'
-                              ? '#f59e0b'
-                              : u.role === 'ADMIN'
-                              ? 'var(--color-primary)'
-                              : u.role === 'REVIEWER'
-                              ? 'var(--color-secondary)'
-                              : u.role === 'READER'
-                              ? '#38bdf8'
-                              : 'var(--text-main)',
-                          cursor: isFulvio ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        <option value="READER" style={{ background: '#1e2227', color: '#38bdf8' }}>
-                          👤 Leitor (Cliente Externo)
-                        </option>
-                        <option value="OPERATOR" style={{ background: '#1e2227', color: '#fff' }}>
-                          👷 Operador (Colaborador Interno)
-                        </option>
-                        <option value="REVIEWER" style={{ background: '#1e2227', color: '#6c63ff' }}>
-                          ✍️ Revisor / Editor
-                        </option>
-                        <option value="ADMIN" style={{ background: '#1e2227', color: '#5cb780' }}>
-                          🛡️ Administrador
-                        </option>
-                        <option value="SUPER_ADMIN" style={{ background: '#1e2227', color: '#f59e0b' }}>
-                          👑 Super Administrador
-                        </option>
-                      </select>
-                    </td>
-
-                    {/* Status Badge */}
-                    <td style={{ padding: '14px' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '3px 9px',
-                          borderRadius: 'var(--radius-full)',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          background: u.status === 'ACTIVE' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                          color: u.status === 'ACTIVE' ? '#10b981' : '#ef4444',
-                        }}
-                      >
+                      {/* Situação: Online, Logado ou Offline */}
+                      <td style={{ padding: '14px 16px' }}>
                         <span
                           style={{
-                            width: '6px',
-                            height: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
                             borderRadius: 'var(--radius-full)',
-                            background: u.status === 'ACTIVE' ? '#10b981' : '#ef4444',
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            background: situation.bg,
+                            color: situation.color,
+                            border: `1px solid ${situation.border}`,
                           }}
-                        />
-                        {u.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-
-                    {/* Date Created */}
-                    <td style={{ padding: '14px', color: 'var(--text-muted)' }}>
-                      {new Date(u.createdAt).toLocaleDateString('pt-BR')}
-                    </td>
-
-                    {/* Last Login */}
-                    <td style={{ padding: '14px', color: 'var(--text-muted)' }}>
-                      {new Date(u.lastLoginAt).toLocaleDateString('pt-BR')}
-                    </td>
-
-                    {/* Actions */}
-                    <td style={{ padding: '14px', textAlign: 'right' }}>
-                      {!isFulvio && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => toggleUserStatus(u.uid)}
-                          style={{ fontSize: '0.76rem' }}
                         >
-                          {u.status === 'ACTIVE' ? 'Desativar' : 'Reativar'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                          <span
+                            style={{
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: 'var(--radius-full)',
+                              background: situation.color,
+                              display: 'inline-block',
+                            }}
+                          />
+                          {situation.label}
+                        </span>
+                      </td>
+
+                      {/* Status da Conta */}
+                      <td style={{ padding: '14px 16px' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '3px 9px',
+                            borderRadius: 'var(--radius-full)',
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            background: u.status === 'ACTIVE' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                            color: u.status === 'ACTIVE' ? '#10b981' : '#ef4444',
+                          }}
+                        >
+                          {u.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
+
+                      {/* Ações */}
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setSelectedUserForProfile(u)}
+                            style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+                            title="Ver Perfil do Usuário"
+                          >
+                            <Eye size={13} />
+                            <span>Perfil</span>
+                          </button>
+
+                          {!isFulvio && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => toggleUserStatus(u.uid)}
+                              style={{ fontSize: '0.76rem' }}
+                            >
+                              {u.status === 'ACTIVE' ? 'Desativar' : 'Reativar'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal: Adicionar Novo Colaborador */}
+      {/* Modal: Perfil do Usuário (Detalhado) */}
+      {selectedUserForProfile && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 105,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={() => setSelectedUserForProfile(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '520px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-lg)',
+              overflow: 'hidden',
+              animation: 'fadeIn 0.2s ease-out',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Faixa superior estilizada */}
+            <div
+              style={{
+                height: '6px',
+                width: '100%',
+                background: selectedUserForProfile.email.toLowerCase().includes('fulvio')
+                  ? 'linear-gradient(90deg, #5cb780, #6c63ff, #f59e0b)'
+                  : 'linear-gradient(90deg, #5cb780, #38bdf8)',
+              }}
+            />
+
+            {/* Cabeçalho do Modal */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-subtle)',
+                background: 'var(--bg-sidebar)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={18} color="var(--color-primary)" />
+                <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0, fontWeight: 700 }}>
+                  Perfil do Usuário
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedUserForProfile(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Conteúdo do Perfil */}
+            <div style={{ padding: '24px' }}>
+              {/* Card com Avatar e Nome */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '20px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: 'var(--radius-full)',
+                    background: selectedUserForProfile.email.toLowerCase().includes('fulvio')
+                      ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
+                      : 'linear-gradient(135deg, #38bdf8 0%, #5cb780 100%)',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '1.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px solid var(--border-subtle)',
+                  }}
+                >
+                  {selectedUserForProfile.displayName.charAt(0).toUpperCase()}
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                    {selectedUserForProfile.displayName}
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-subtle)' }}>
+                    {selectedUserForProfile.email}
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid de Informações Detalhadas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                {/* Cargo */}
+                <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    Cargo Atual:
+                  </span>
+                  <strong style={{ fontSize: '0.86rem', color: 'var(--text-main)' }}>
+                    {selectedUserForProfile.role === 'SUPER_ADMIN'
+                      ? '👑 Super Administrador'
+                      : selectedUserForProfile.role === 'ADMIN'
+                      ? '🛡️ Administrador'
+                      : selectedUserForProfile.role === 'REVIEWER'
+                      ? '✍️ Revisor / Editor'
+                      : selectedUserForProfile.role === 'READER'
+                      ? '👤 Leitor'
+                      : '👷 Operador'}
+                  </strong>
+                </div>
+
+                {/* Situação */}
+                <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    Situação de Acesso:
+                  </span>
+                  {(() => {
+                    const sit = getUserSituation(selectedUserForProfile);
+                    return (
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: sit.color }}>
+                        {sit.label}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {/* Status da Conta */}
+                <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    Status da Conta:
+                  </span>
+                  <strong style={{ fontSize: '0.85rem', color: selectedUserForProfile.status === 'ACTIVE' ? '#10b981' : '#ef4444' }}>
+                    {selectedUserForProfile.status === 'ACTIVE' ? '✅ Ativa' : '❌ Desativada'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Informações de Login e Contribuições */}
+              <div style={{ padding: '14px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '20px', fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={14} />
+                    Último Acesso:
+                  </span>
+                  <strong style={{ color: 'var(--text-main)' }}>
+                    {selectedUserForProfile.lastLoginAt
+                      ? new Date(selectedUserForProfile.lastLoginAt).toLocaleString('pt-BR')
+                      : 'Ainda não realizou login'}
+                  </strong>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileText size={14} />
+                    Manuais / Artigos Criados:
+                  </span>
+                  <strong style={{ color: 'var(--color-primary)' }}>
+                    {articles.filter((a) => a.authorEmail.toLowerCase() === selectedUserForProfile.email.toLowerCase()).length} publicações
+                  </strong>
+                </div>
+              </div>
+
+              {/* Ação de Fechar */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setSelectedUserForProfile(null)}
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Adicionar Novo Colaborador ou Usuário */}
       {isAddModalOpen && (
         <div
           style={{
@@ -306,7 +804,7 @@ export const UserManagementView: React.FC = () => {
               }}
             >
               <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0 }}>
-                Cadastrar Colaborador do Conciliador
+                {activeTab === 'COLABORADORES' ? 'Cadastrar Colaborador do Conciliador' : 'Cadastrar Usuário Externo (Cliente)'}
               </h3>
               <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ color: 'var(--text-subtle)' }}>
                 ✕
@@ -367,12 +865,18 @@ export const UserManagementView: React.FC = () => {
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  E-mail Corporativo (@conciliadorcontabil.com.br):
+                  {activeTab === 'COLABORADORES'
+                    ? 'E-mail Corporativo (@conciliadorcontabil.com.br):'
+                    : 'E-mail do Cliente / Usuário:'}
                 </label>
                 <input
                   type="email"
                   required
-                  placeholder="nome@conciliadorcontabil.com.br"
+                  placeholder={
+                    activeTab === 'COLABORADORES'
+                      ? 'nome@conciliadorcontabil.com.br'
+                      : 'cliente@exemplo.com.br'
+                  }
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   style={{
@@ -396,7 +900,15 @@ export const UserManagementView: React.FC = () => {
                   border: '1px solid var(--border-subtle)',
                 }}
               >
-                ℹ️ Por padrão institucional, novos usuários ingressam com o cargo de <strong>Operador (Usuário Comum)</strong>. Após o cadastro, você poderá alterá-lo diretamente na tabela.
+                {activeTab === 'COLABORADORES' ? (
+                  <span>
+                    ℹ️ Novos colaboradores iniciam com o cargo de <strong>Operador</strong>. Você poderá promovê-los para Administrador ou Revisor diretamente na tabela.
+                  </span>
+                ) : (
+                  <span>
+                    ℹ️ Clientes externos ingressam como <strong>Leitores</strong>, com visualização restrita a manuais públicos/externos.
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
@@ -408,7 +920,7 @@ export const UserManagementView: React.FC = () => {
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Cadastrar Colaborador
+                  {activeTab === 'COLABORADORES' ? 'Cadastrar Colaborador' : 'Cadastrar Usuário'}
                 </button>
               </div>
             </form>

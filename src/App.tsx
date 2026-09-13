@@ -9,7 +9,7 @@ import { ToolsHubView } from './components/views/ToolsHubView';
 import { DashboardView } from './components/views/DashboardView';
 import { UserManagementView } from './components/views/UserManagementView';
 import { ArticleEditorView } from './components/views/ArticleEditorView';
-import { LandingPresentationView } from './components/views/LandingPresentationView';
+import { LoginPageView } from './components/views/LoginPageView';
 import { ExternalPortalView } from './components/views/ExternalPortalView';
 import { SearchSpotlightModal } from './components/search/SearchSpotlightModal';
 import { AuthModal } from './components/auth/AuthModal';
@@ -37,16 +37,14 @@ const MainApp: React.FC = () => {
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const [isProposalMode, setIsProposalMode] = useState(false);
 
-  // Sincroniza a visão ativa quando o usuário faz login ou logout ou muda papel de simulação
+  // Sincroniza a visão ativa quando o usuário faz login ou logout
   useEffect(() => {
     if (!currentUser) {
-      if (activeView !== 'external-portal' && activeView !== 'tools') {
-        setActiveView('landing');
-      }
+      setActiveView('landing');
     } else {
       if (isInternal && (activeView === 'landing' || activeView === 'external-portal')) {
         setActiveView('kb');
-      } else if (!isInternal && activeView !== 'tools') {
+      } else if (!isInternal && activeView === 'landing') {
         setActiveView('external-portal');
       }
     }
@@ -79,12 +77,12 @@ const MainApp: React.FC = () => {
     }
   };
 
-  const isLanding = activeView === 'landing';
+  const isLanding = activeView === 'landing' || !currentUser;
 
   return (
     <div className="app-container">
-      {/* Sidebar Navigation - oculta na landing page para experiência imersiva */}
-      {!isLanding && (
+      {/* Sidebar Navigation - apenas para colaboradores internos (oculta para clientes e na landing page) */}
+      {!isLanding && !isExternal && (
         <Sidebar
           activeView={activeView}
           setActiveView={setActiveView}
@@ -94,12 +92,12 @@ const MainApp: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="main-content">
-        <Header activeView={activeView} setActiveView={setActiveView} />
+        {!isLanding && <Header activeView={activeView} setActiveView={setActiveView} />}
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
-          {/* Landing Presentation Page (Sem Login) */}
+          {/* Tela de Login Inicial Minimalista */}
           {activeView === 'landing' && (
-            <LandingPresentationView 
+            <LoginPageView 
               onAccessExternalPortal={() => setActiveView('external-portal')} 
             />
           )}

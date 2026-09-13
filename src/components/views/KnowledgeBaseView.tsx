@@ -42,6 +42,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     setSelectedCategory,
     selectedArticle,
     setSelectedArticle,
+    incrementArticleView,
     voteArticle,
     currentUser,
   } = useApp();
@@ -475,7 +476,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               <div
                 key={art.id}
                 className="card"
-                onClick={() => setSelectedArticle(art)}
+                onClick={() => {
+                  setSelectedArticle(art);
+                  incrementArticleView(art.id);
+                }}
                 style={{
                   cursor: 'pointer',
                   padding: '18px 22px',

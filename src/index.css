@@ -290,3 +290,177 @@ input, textarea, select {
 .animate-fade-in {
   animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ==========================================================================
+   Editor Visual WYSIWYG & Article Content Styles
+   ========================================================================== */
+.article-visual-editor,
+.article-preview-content {
+  font-family: var(--font-body);
+  line-height: 1.7;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.article-visual-editor:focus {
+  outline: none;
+}
+
+.article-visual-editor h2,
+.article-preview-content h2 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 20px 0 10px 0;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 6px;
+}
+
+.article-visual-editor h3,
+.article-preview-content h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: var(--text-main);
+}
+
+.article-visual-editor p,
+.article-preview-content p {
+  margin: 10px 0;
+}
+
+.article-visual-editor ul,
+.article-preview-content ul {
+  margin: 12px 0 12px 24px;
+  list-style-type: disc;
+}
+
+.article-visual-editor ol,
+.article-preview-content ol {
+  margin: 12px 0 12px 24px;
+  list-style-type: decimal;
+}
+
+.article-visual-editor li,
+.article-preview-content li {
+  margin-bottom: 4px;
+}
+
+.article-visual-editor table,
+.article-preview-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.article-visual-editor th,
+.article-preview-content th {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  padding: 10px 12px;
+  font-weight: 700;
+  text-align: left;
+  font-size: 0.88rem;
+  color: var(--text-main);
+}
+
+.article-visual-editor td,
+.article-preview-content td {
+  border: 1px solid var(--border-subtle);
+  padding: 9px 12px;
+  font-size: 0.86rem;
+  color: var(--text-main);
+}
+
+.article-visual-editor tr:hover,
+.article-preview-content tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Callouts */
+.article-visual-editor .callout,
+.article-preview-content .callout {
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  margin: 16px 0;
+  display: block;
+}
+
+.article-visual-editor .callout-tip,
+.article-preview-content .callout-tip {
+  background: rgba(92, 183, 128, 0.10);
+  border-left: 4px solid #5cb780;
+  color: var(--text-main);
+}
+
+.article-visual-editor .callout-info,
+.article-preview-content .callout-info {
+  background: rgba(56, 189, 248, 0.10);
+  border-left: 4px solid #38bdf8;
+  color: var(--text-main);
+}
+
+.article-visual-editor .callout-warning,
+.article-preview-content .callout-warning {
+  background: rgba(245, 158, 11, 0.10);
+  border-left: 4px solid #f59e0b;
+  color: var(--text-main);
+}
+
+/* Blockquote & Code */
+.article-visual-editor blockquote,
+.article-preview-content blockquote {
+  border-left: 4px solid var(--color-primary);
+  padding: 8px 16px;
+  margin: 14px 0;
+  background: rgba(92, 183, 128, 0.05);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.article-visual-editor pre,
+.article-preview-content pre {
+  background: #0d1117;
+  padding: 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.84rem;
+  border: 1px solid var(--border-subtle);
+  margin: 14px 0;
+}
+
+/* Images and Grids */
+.article-visual-editor img,
+.article-preview-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: outline 0.15s ease;
+}
+
+.article-visual-editor img.img-selected {
+  outline: 3px solid var(--color-primary);
+  box-shadow: 0 0 16px rgba(92, 183, 128, 0.45);
+}
+
+.article-visual-editor .image-row-2,
+.article-preview-content .image-row-2 {
+  display: flex;
+  gap: 16px;
+  margin: 18px 0;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.article-visual-editor .image-row-2 > div,
+.article-preview-content .image-row-2 > div {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 240px;
+}
+

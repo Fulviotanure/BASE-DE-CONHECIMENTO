@@ -13,7 +13,7 @@ export interface UserProfile {
   userType?: UserType;
   status: UserStatus;
   createdAt: string;
-  lastLoginAt: string;
+  lastLoginAt?: string | null;
 }
 
 export interface Category {
@@ -32,8 +32,9 @@ export interface ArticleReviewComment {
   id: string;
   authorName: string;
   authorRole: UserRole;
+  authorEmail?: string;
   message: string;
-  isResolved: boolean;
+  isResolved?: boolean;
   createdAt: string;
 }
 
@@ -64,7 +65,9 @@ export interface Article {
   dislikesCount?: number;
   proposalNote?: string;
   contentHtml: string;
+  attachments?: { id: string; name: string; size: string; url?: string }[];
   reviews?: ArticleReview[];
+  comments?: ArticleReviewComment[]; // Conversa em balões entre Revisor e Criador
   publishedAt?: string;
   accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL';
   createdAt: string;

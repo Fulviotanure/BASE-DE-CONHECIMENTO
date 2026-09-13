@@ -17,7 +17,6 @@ import type { ToolCategory, ToolItem } from '../../types';
 export const ToolsHubView: React.FC = () => {
   const { tools, addTool, currentUser } = useApp();
 
-  const [activeCategory, setActiveCategory] = useState<'ALL' | ToolCategory>('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   // Form state
@@ -29,7 +28,7 @@ export const ToolsHubView: React.FC = () => {
   const [fileSize, setFileSize] = useState('');
   const [versionTag, setVersionTag] = useState('');
 
-  const filteredTools = activeCategory === 'ALL' ? tools : tools.filter((t) => t.category === activeCategory);
+  const filteredTools = tools;
 
   const getToolIcon = (cat: ToolCategory) => {
     switch (cat) {
@@ -86,7 +85,7 @@ export const ToolsHubView: React.FC = () => {
           </p>
         </div>
 
-        {currentUser.role === 'ADMIN' && (
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
           <button
             type="button"
             className="btn btn-primary"
@@ -98,93 +97,6 @@ export const ToolsHubView: React.FC = () => {
         )}
       </div>
 
-      {/* Category Pills */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '8px' }}>
-        <button
-          type="button"
-          onClick={() => setActiveCategory('ALL')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 'var(--radius-full)',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: activeCategory === 'ALL' ? 'var(--color-primary)' : 'var(--bg-card)',
-            color: activeCategory === 'ALL' ? '#fff' : 'var(--text-muted)',
-            border: `1px solid ${activeCategory === 'ALL' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-          }}
-        >
-          Todos ({tools.length})
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveCategory('SOFTWARES')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 'var(--radius-full)',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: activeCategory === 'SOFTWARES' ? 'var(--color-primary)' : 'var(--bg-card)',
-            color: activeCategory === 'SOFTWARES' ? '#fff' : 'var(--text-muted)',
-            border: `1px solid ${activeCategory === 'SOFTWARES' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-          }}
-        >
-          Softwares & Executáveis (.exe)
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveCategory('CONVERSORES')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 'var(--radius-full)',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: activeCategory === 'CONVERSORES' ? 'var(--color-primary)' : 'var(--bg-card)',
-            color: activeCategory === 'CONVERSORES' ? '#fff' : 'var(--text-muted)',
-            border: `1px solid ${activeCategory === 'CONVERSORES' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-          }}
-        >
-          Conversores OFX / PDF
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveCategory('LAYOUTS_ERP')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 'var(--radius-full)',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: activeCategory === 'LAYOUTS_ERP' ? 'var(--color-primary)' : 'var(--bg-card)',
-            color: activeCategory === 'LAYOUTS_ERP' ? '#fff' : 'var(--text-muted)',
-            border: `1px solid ${activeCategory === 'LAYOUTS_ERP' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-          }}
-        >
-          Modelos & Layouts ERP
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveCategory('LINKS_OPERACIONAIS')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 'var(--radius-full)',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: activeCategory === 'LINKS_OPERACIONAIS' ? 'var(--color-primary)' : 'var(--bg-card)',
-            color: activeCategory === 'LINKS_OPERACIONAIS' ? '#fff' : 'var(--text-muted)',
-            border: `1px solid ${activeCategory === 'LINKS_OPERACIONAIS' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-          }}
-        >
-          Links Operacionais
-        </button>
-      </div>
 
       {/* Tools Cards Grid */}
       <div
@@ -273,7 +185,7 @@ export const ToolsHubView: React.FC = () => {
                   style={{ width: '100%', padding: '9px 14px', fontSize: '0.85rem' }}
                 >
                   <Download size={15} />
-                  <span>Baixar Arquivo {tool.fileSize ? `(${tool.fileSize})` : ''}</span>
+                  <span>{tool.targetUrl.includes('drive.google.com') ? 'Acessar no Google Drive' : `Baixar Arquivo ${tool.fileSize ? `(${tool.fileSize})` : ''}`}</span>
                 </a>
               ) : (
                 <a
@@ -283,7 +195,7 @@ export const ToolsHubView: React.FC = () => {
                   className="btn btn-secondary"
                   style={{ width: '100%', padding: '9px 14px', fontSize: '0.85rem' }}
                 >
-                  <span>Acessar Portal Externo</span>
+                  <span>Acessar Ferramenta Online</span>
                   <ExternalLink size={14} />
                 </a>
               )}

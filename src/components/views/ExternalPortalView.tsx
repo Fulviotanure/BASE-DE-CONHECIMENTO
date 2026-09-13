@@ -2,22 +2,22 @@ import React, { useState } from 'react';
 import { 
   Search, 
   BookOpen, 
-  FileDown, 
-  HelpCircle, 
-  LifeBuoy, 
   ExternalLink, 
-  CheckCircle2, 
-  FileText, 
+  LifeBuoy, 
   Globe, 
-  ShieldAlert,
-  ArrowRight,
-  Download,
-  Lock,
-  ThumbsUp,
+  ThumbsUp, 
   ThumbsDown,
+  ArrowLeft,
+  Calendar,
+  Eye,
+  Tag,
+  ChevronDown,
+  X,
+  MessageCircle,
+  Mail
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import type { Article, ToolItem } from '../../types';
+import type { Article } from '../../types';
 
 interface ExternalPortalViewProps {
   onBackToPresentation?: () => void;
@@ -25,20 +25,26 @@ interface ExternalPortalViewProps {
 }
 
 export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({ 
-  onBackToPresentation,
   onSelectArticle 
 }) => {
-  const { articles, tools, currentUser, setIsAuthModalOpen, setSelectedArticle, voteArticle } = useApp();
+  const { articles, incrementArticleView, voteArticle } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'articles' | 'downloads' | 'support'>('articles');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [readingArticle, setReadingArticle] = useState<Article | null>(null);
+  const [isLinksMenuOpen, setIsLinksMenuOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
-  // Filtra apenas artigos públicos / externos (accessLevel === 'ALL' || accessLevel === 'EXTERNAL')
-  const publicArticles = articles.filter(
+  // Filtra apenas artigos aprovados para clientes/externos
+  const availableArticles = articles.filter(
     (a) => a.currentStatus === 'APPROVED' && (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL')
   );
 
-  const filteredArticles = publicArticles.filter((a) => {
+  // Categorias únicas existentes nos artigos disponíveis
+  const categories = Array.from(new Set(availableArticles.map((a) => a.categoryName).filter(Boolean)));
+
+  const filteredArticles = availableArticles.filter((a) => {
+    const matchesCategory = selectedCategory === 'ALL' || a.categoryName === selectedCategory;
+    if (!matchesCategory) return false;
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     return (
@@ -49,337 +55,501 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
     );
   });
 
-  // Filtra ferramentas/downloads públicos
-  const publicTools = tools.filter((t) => t.isActive && t.accessLevel !== 'INTERNAL');
-
   const handleOpenArticle = (art: Article) => {
     setReadingArticle(art);
+    incrementArticleView(art.id);
     if (onSelectArticle) onSelectArticle(art);
   };
 
   return (
     <div 
       style={{ 
-        maxWidth: '1140px', 
-        margin: '0 auto', 
-        padding: '32px 20px 80px 20px', 
+        minHeight: '100vh',
         width: '100%',
-        color: 'var(--text-main)',
+        position: 'relative',
+        backgroundImage: 'url(/client-bg.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+        color: '#ffffff',
+        overflowX: 'hidden',
       }} 
       className="animate-fade-in"
     >
-      {/* Staff Callout if visitor or external */}
-      {(!currentUser || currentUser.userType === 'EXTERNAL') && (
-        <div 
-          style={{
-            padding: '12px 18px',
-            background: 'rgba(92, 183, 128, 0.08)',
-            border: '1px solid rgba(92, 183, 128, 0.25)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '24px',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Globe size={18} color="var(--color-primary)" />
-            <span style={{ fontSize: '0.84rem', color: 'var(--text-main)' }}>
-              Você está navegando no <strong>Portal do Cliente e Suporte Externo</strong>.
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsAuthModalOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--color-primary)',
-              color: '#1a1d20',
-              border: 'none',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <Lock size={12} />
-            <span>Acesso Colaborador (@conciliadorcontabil.com.br)</span>
-          </button>
-        </div>
-      )}
-
-      {/* Hero Title */}
-      <div style={{ marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <span 
-            style={{ 
-              fontSize: '0.72rem', 
-              fontWeight: 800, 
-              color: '#38bdf8', 
-              textTransform: 'uppercase', 
-              letterSpacing: '0.08em',
-              padding: '2px 8px',
-              borderRadius: 'var(--radius-full)',
-              background: 'rgba(56, 189, 248, 0.12)',
-            }}
-          >
-            Portal do Cliente
-          </span>
-          {onBackToPresentation && (
-            <button
-              type="button"
-              onClick={onBackToPresentation}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-subtle)',
-                fontSize: '0.76rem',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
-            >
-              ← Voltar à Apresentação
-            </button>
-          )}
-        </div>
-
-        <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 8px 0' }}>
-          Central de Manuais, Modelos & Suporte
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', margin: 0, maxWidth: '700px' }}>
-          Consulte guias de importação de extratos bancários, modelos de planilhas para integração
-          e acione nosso time de atendimento técnico especializado.
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div 
-        style={{ 
-          display: 'flex', 
-          borderBottom: '1px solid var(--border-subtle)', 
-          marginBottom: '28px',
-          gap: '8px',
+      {/* Leve Película Transparente de Sobreposição Esverdeada (97% de Transparência / 3% Opacidade) */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(135deg, rgba(39, 219, 136, 0.03) 0%, rgba(16, 185, 129, 0.03) 50%, rgba(5, 150, 105, 0.03) 100%)',
+          zIndex: 1,
+          pointerEvents: 'none',
         }}
-      >
-        {[
-          { id: 'articles', label: 'Manuais & Tutoriais', icon: BookOpen },
-          { id: 'downloads', label: 'Modelos & Downloads', icon: FileDown },
-          { id: 'support', label: 'Suporte & Chamados', icon: LifeBuoy },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
+      />
+
+      <div style={{ position: 'relative', zIndex: 10, maxWidth: '1080px', margin: '0 auto', width: '100%', padding: '40px 24px 80px 24px' }}>
+        {readingArticle ? (
+          /* TELA DE LEITURA DO ARTIGO PARA CLIENTES */
+          <div 
+            style={{
+              background: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '20px',
+              padding: '36px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            }}
+          >
             <button
-              key={tab.id}
               type="button"
-              onClick={() => {
-                setActiveTab(tab.id as any);
-                setReadingArticle(null);
-              }}
+              onClick={() => setReadingArticle(null)}
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '10px 16px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? '2px solid var(--color-primary)' : '2px solid transparent',
-                color: isActive ? 'var(--color-primary)' : 'var(--text-muted)',
-                fontWeight: isActive ? 700 : 500,
-                fontSize: '0.88rem',
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#94a3b8',
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.84rem',
+                fontWeight: 600,
                 cursor: 'pointer',
-                transition: 'all 0.18s ease',
+                marginBottom: '24px',
+                transition: 'all 0.15s ease',
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#ffffff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
             >
-              <Icon size={16} />
-              <span>{tab.label}</span>
+              <ArrowLeft size={16} />
+              <span>Voltar para manuais</span>
             </button>
-          );
-        })}
-      </div>
 
-      {/* TAB 1: ARTICLES */}
-      {activeTab === 'articles' && (
-        <div>
-          {readingArticle ? (
-            <div 
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-lg)',
-                padding: '32px',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setReadingArticle(null)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-main)',
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  marginBottom: '24px',
-                }}
-              >
-                ← Voltar para a listagem de manuais
-              </button>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            {/* Cabeçalho do Artigo */}
+            <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '20px', marginBottom: '28px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <span
                   style={{
-                    fontSize: '0.78rem',
+                    fontSize: '0.75rem',
                     fontWeight: 800,
                     padding: '3px 8px',
                     borderRadius: '4px',
-                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    background: 'rgba(92, 183, 128, 0.2)',
+                    color: '#5cb780',
+                    border: '1px solid rgba(92, 183, 128, 0.4)',
                     fontFamily: 'monospace',
-                    letterSpacing: '0.04em',
                   }}
                 >
-                  {readingArticle.code || 'CC-DOC'}
+                  {readingArticle.code || 'MANUAL'}
                 </span>
-                <span 
-                  style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    background: 'var(--color-primary-subtle)',
-                    color: 'var(--color-primary)',
-                  }}
-                >
+                <span style={{ fontSize: '0.80rem', color: '#38bdf8', fontWeight: 700 }}>
                   {readingArticle.categoryName}
                 </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                  Criado por: <strong>{readingArticle.authorName || 'Fulvio Tanure'}</strong> em {new Date(readingArticle.createdAt).toLocaleDateString('pt-BR')} • {readingArticle.viewCount} visualizações
+              </div>
+
+              <h1 style={{ fontSize: '1.9rem', fontWeight: 800, lineHeight: 1.3, margin: '0 0 16px 0', color: '#ffffff' }}>
+                {readingArticle.title}
+              </h1>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '0.82rem', color: '#94a3b8' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Calendar size={14} />
+                  <span>Publicado em {new Date(readingArticle.createdAt).toLocaleDateString('pt-BR')}</span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Eye size={14} />
+                  <span>{readingArticle.viewCount} visualizações</span>
                 </span>
               </div>
 
-              <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 20px 0', color: 'var(--text-main)' }}>
-                {readingArticle.title}
-              </h2>
-
-              <div 
-                style={{
-                  lineHeight: 1.7,
-                  color: 'var(--text-main)',
-                  fontSize: '0.94rem',
-                }}
-                dangerouslySetInnerHTML={{ __html: readingArticle.contentHtml }}
-              />
-
-              {/* Helpful Feedback: Joinha & Deslike com Contadores */}
-              <div
-                style={{
-                  marginTop: '32px',
-                  padding: '20px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                    Este manual técnico esclareceu sua dúvida?
-                  </span>
+              {readingArticle.tags && readingArticle.tags.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px', marginTop: '14px', flexWrap: 'wrap' }}>
+                  {readingArticle.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      style={{
+                        fontSize: '0.74rem',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        color: '#cbd5e1',
+                      }}
+                    >
+                      #{tag}
+                    </span>
+                  ))}
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => voteArticle(readingArticle.id, 'like')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '7px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      background: 'rgba(16, 185, 129, 0.1)',
-                      border: '1px solid rgba(16, 185, 129, 0.3)',
-                      color: '#10b981',
-                      fontWeight: 700,
-                      fontSize: '0.82rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <ThumbsUp size={14} />
-                    <span>Útil ({readingArticle.likesCount || 0})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => voteArticle(readingArticle.id, 'dislike')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '7px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#ef4444',
-                      fontWeight: 700,
-                      fontSize: '0.82rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <ThumbsDown size={14} />
-                    <span>Não ajudou ({readingArticle.dislikesCount || 0})</span>
-                  </button>
-                </div>
+              )}
+            </div>
+
+            {/* Conteúdo HTML do Artigo */}
+            <div
+              style={{
+                lineHeight: 1.8,
+                fontSize: '1rem',
+                color: '#e2e8f0',
+                padding: '10px 0 30px 0',
+              }}
+              dangerouslySetInnerHTML={{ __html: readingArticle.contentHtml }}
+            />
+
+            {/* Avaliação Útil / Não Útil */}
+            <div
+              style={{
+                marginTop: '32px',
+                padding: '20px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: 'var(--radius-md)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}
+            >
+              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#ffffff' }}>
+                Este manual esclareceu sua dúvida?
+              </span>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => voteArticle(readingArticle.id, 'like')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    color: '#10b981',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ThumbsUp size={14} />
+                  <span>Sim ({readingArticle.likesCount || 0})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => voteArticle(readingArticle.id, 'dislike')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#ef4444',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ThumbsDown size={14} />
+                  <span>Não ({readingArticle.dislikesCount || 0})</span>
+                </button>
               </div>
             </div>
-          ) : (
-            <div>
-              {/* Search Bar */}
-              <div style={{ position: 'relative', marginBottom: '24px' }}>
-                <Search 
-                  size={18} 
-                  color="var(--text-subtle)" 
-                  style={{ position: 'absolute', left: '14px', top: '14px' }} 
-                />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Pesquisar manual de importação, extratos, ERPs ou dúvidas comuns..."
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px 12px 42px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--text-main)',
-                    fontSize: '0.9rem',
-                    outline: 'none',
-                  }}
-                />
+          </div>
+        ) : (
+          /* TELA INICIAL CLEAN DO CLIENTE */
+          <div>
+            {/* Header Amigável e Clean */}
+            <div style={{ textAlign: 'center', marginBottom: '36px', paddingTop: '10px' }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 14px',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'rgba(92, 183, 128, 0.15)',
+                  border: '1px solid rgba(92, 183, 128, 0.35)',
+                  color: '#5cb780',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  marginBottom: '14px',
+                }}
+              >
+                <span>Central de Conhecimento</span>
               </div>
+              <h1 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 10px 0', letterSpacing: '-0.02em', color: '#ffffff', textShadow: '0 2px 14px rgba(0, 0, 0, 0.85), 0 1px 4px rgba(0, 0, 0, 0.9)' }}>
+                Como podemos ajudar você hoje?
+              </h1>
+              <p style={{ color: '#e2e8f0', fontSize: '1rem', margin: '0 auto', maxWidth: '620px', lineHeight: 1.5, textShadow: '0 1px 8px rgba(0, 0, 0, 0.85)' }}>
+                Acesse procedimentos práticos, soluções para conciliação e guias passo a passo.
+              </p>
+            </div>
 
-              {/* Grid of Public Articles */}
+            {/* Barra de Busca + Botão Links Úteis */}
+            <div 
+              style={{ 
+                display: 'flex', 
+                gap: '12px', 
+                marginBottom: '28px',
+                maxWidth: '760px',
+                margin: '0 auto 28px auto',
+                position: 'relative',
+              }}
+            >
               <div 
                 style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', 
-                  gap: '16px' 
+                  flex: 1, 
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Search size={18} style={{ position: 'absolute', left: '16px', color: '#5cb780' }} />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por assunto, banco, extrato ou dúvida..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '14px 16px 14px 46px',
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(92, 183, 128, 0.35)',
+                    borderRadius: '14px',
+                    color: '#ffffff',
+                    fontSize: '0.94rem',
+                    outline: 'none',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+                  }}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    style={{
+                      position: 'absolute',
+                      right: '14px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* Botão: Links Úteis */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsLinksMenuOpen(!isLinksMenuOpen)}
+                  style={{
+                    height: '100%',
+                    padding: '0 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '14px',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#5cb780')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)')}
+                >
+                  <Globe size={16} color="#5cb780" />
+                  <span>Links Úteis</span>
+                  <ChevronDown size={14} color="#94a3b8" />
+                </button>
+
+                {/* Dropdown Menu Flutuante */}
+                {isLinksMenuOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 'calc(100% + 8px)',
+                      width: '230px',
+                      background: '#0f172a',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '14px',
+                      boxShadow: '0 16px 36px rgba(0, 0, 0, 0.5)',
+                      padding: '8px',
+                      zIndex: 50,
+                      animation: 'fadeIn 0.15s ease-out',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLinksMenuOpen(false);
+                        setIsSupportModalOpen(true);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '0.86rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(92, 183, 128, 0.12)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <LifeBuoy size={16} color="#5cb780" />
+                      <div>
+                        <div>Suporte Técnico</div>
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Fale com nosso time</span>
+                      </div>
+                    </button>
+
+                    <a
+                      href="https://conciliadorcontabil.com.br"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setIsLinksMenuOpen(false)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '0.86rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textDecoration: 'none',
+                        textAlign: 'left',
+                        transition: 'background 0.15s',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(56, 189, 248, 0.12)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <Globe size={16} color="#38bdf8" />
+                      <div>
+                        <div>Site do Conciliador</div>
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>conciliadorcontabil.com.br</span>
+                      </div>
+                      <ExternalLink size={13} style={{ marginLeft: 'auto', color: '#64748b' }} />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Categorias em Chips Elegantes */}
+            {categories.length > 0 && (
+              <div 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px', 
+                  flexWrap: 'wrap', 
+                  marginBottom: '32px' 
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('ALL')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 'var(--radius-full)',
+                    border: '1px solid',
+                    borderColor: selectedCategory === 'ALL' ? '#5cb780' : 'rgba(255, 255, 255, 0.12)',
+                    background: selectedCategory === 'ALL' ? 'rgba(92, 183, 128, 0.2)' : 'rgba(15, 23, 42, 0.6)',
+                    color: selectedCategory === 'ALL' ? '#5cb780' : '#94a3b8',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    backdropFilter: 'blur(8px)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Todos ({availableArticles.length})
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: 'var(--radius-full)',
+                      border: '1px solid',
+                      borderColor: selectedCategory === cat ? '#5cb780' : 'rgba(255, 255, 255, 0.12)',
+                      background: selectedCategory === cat ? 'rgba(92, 183, 128, 0.2)' : 'rgba(15, 23, 42, 0.6)',
+                      color: selectedCategory === cat ? '#5cb780' : '#94a3b8',
+                      fontSize: '0.80rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      backdropFilter: 'blur(8px)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Listagem dos Artigos em Cards Clean */}
+            {filteredArticles.length === 0 ? (
+              <div
+                style={{
+                  padding: '60px 20px',
+                  textAlign: 'center',
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  backdropFilter: 'blur(16px)',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  maxWidth: '680px',
+                  margin: '0 auto',
+                }}
+              >
+                <BookOpen size={40} color="#64748b" style={{ margin: '0 auto 12px auto' }} />
+                <h3 style={{ fontSize: '1.1rem', color: '#ffffff', marginBottom: '6px' }}>
+                  Nenhum manual encontrado
+                </h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0 }}>
+                  {searchTerm
+                    ? `Não encontramos resultados para "${searchTerm}". Tente outros termos.`
+                    : 'Ainda não há manuais publicados nesta categoria.'}
+                </p>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                  gap: '20px',
                 }}
               >
                 {filteredArticles.map((art) => (
@@ -387,310 +557,185 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                     key={art.id}
                     onClick={() => handleOpenArticle(art)}
                     style={{
+                      background: 'rgba(15, 23, 42, 0.78)',
+                      backdropFilter: 'blur(16px)',
+                      WebkitBackdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '16px',
                       padding: '22px',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-md)',
                       cursor: 'pointer',
-                      transition: 'all 0.2s ease',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--color-primary)';
+                      e.currentTarget.style.borderColor = 'rgba(92, 183, 128, 0.4)';
                       e.currentTarget.style.transform = 'translateY(-2px)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
                       e.currentTarget.style.transform = 'translateY(0)';
                     }}
                   >
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span
-                            style={{
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                              color: '#38bdf8',
-                              border: '1px solid rgba(56, 189, 248, 0.3)',
-                              fontFamily: 'monospace',
-                            }}
-                          >
-                            {art.code || 'CC-DOC'}
-                          </span>
-                          <span 
-                            style={{
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              padding: '2px 7px',
-                              borderRadius: '4px',
-                              background: 'var(--color-primary-subtle)',
-                              color: 'var(--color-primary)',
-                            }}
-                          >
-                            {art.categoryName}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
-                          Manual Oficial
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            background: 'rgba(92, 183, 128, 0.15)',
+                            color: '#5cb780',
+                            border: '1px solid rgba(92, 183, 128, 0.3)',
+                            fontFamily: 'monospace',
+                          }}
+                        >
+                          {art.code || 'DOC'}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
+                          {art.categoryName}
                         </span>
                       </div>
 
-                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 8px 0', color: 'var(--text-main)', lineHeight: 1.4 }}>
+                      <h3
+                        style={{
+                          fontSize: '1.05rem',
+                          fontWeight: 700,
+                          lineHeight: 1.4,
+                          margin: '0 0 10px 0',
+                          color: '#ffffff',
+                        }}
+                      >
                         {art.title}
                       </h3>
-
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 10px 0' }}>
-                        Orientações para exportação no banco, formatação correta e validação no Conciliador.
-                      </p>
-
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: '12px' }}>
-                        Criado por: <strong>{art.authorName || 'Fulvio Tanure'}</strong> • {new Date(art.createdAt).toLocaleDateString('pt-BR')}
-                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
-                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                        {art.tags.slice(0, 3).map((tag, idx) => (
-                          <span 
-                            key={idx}
-                            style={{
-                              fontSize: '0.68rem',
-                              padding: '1px 6px',
-                              borderRadius: '3px',
-                              background: 'var(--bg-input)',
-                              color: 'var(--text-subtle)',
-                            }}
-                          >
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem' }}>
-                          <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
-                            <ThumbsUp size={12} />
-                            {art.likesCount || 0}
-                          </span>
-                          <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
-                            <ThumbsDown size={12} />
-                            {art.dislikesCount || 0}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          Ler manual <ArrowRight size={13} />
-                        </span>
-                      </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: '16px',
+                        paddingTop: '12px',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                        fontSize: '0.76rem',
+                        color: '#94a3b8',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <Eye size={13} />
+                        <span>{art.viewCount} acessos</span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontWeight: 700 }}>
+                        <ThumbsUp size={13} />
+                        <span>{art.likesCount || 0}</span>
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 2: DOWNLOADS & TEMPLATES */}
-      {activeTab === 'downloads' && (
-        <div>
-          <div style={{ marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 6px 0' }}>
-              Modelos de Arquivos e Planilhas Oficiais
-            </h2>
-            <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', margin: 0 }}>
-              Baixe os padrões aceitos para conciliação manual, conversores e layouts de sistemas ERP.
-            </p>
+            )}
           </div>
+        )}
+      </div>
 
-          <div 
-            style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
-              gap: '16px' 
-            }}
-          >
-            {publicTools.map((tool) => (
-              <div
-                key={tool.id}
-                style={{
-                  padding: '20px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                    <span 
-                      style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: 'var(--radius-full)',
-                        background: 'rgba(56, 189, 248, 0.15)',
-                        color: '#38bdf8',
-                      }}
-                    >
-                      {tool.category}
-                    </span>
-                    {tool.fileSize && (
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
-                        {tool.fileSize}
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-main)' }}>
-                    {tool.title}
-                  </h3>
-
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-                    {tool.description}
-                  </p>
-                </div>
-
-                <a
-                  href={tool.targetUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '9px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    color: 'var(--text-main)',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    transition: 'all 0.18s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--color-primary)';
-                    e.currentTarget.style.color = 'var(--color-primary)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                    e.currentTarget.style.color = 'var(--text-main)';
-                  }}
-                >
-                  <Download size={14} />
-                  <span>Baixar Arquivo Oficial</span>
-                </a>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: SUPPORT */}
-      {activeTab === 'support' && (
-        <div 
+      {/* Modal de Suporte Técnico */}
+      {isSupportModalOpen && (
+        <div
           style={{
-            maxWidth: '720px',
-            margin: '0 auto',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '32px',
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '20px',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsSupportModalOpen(false);
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <div 
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(92, 183, 128, 0.12)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-primary)',
-              }}
-            >
-              <LifeBuoy size={24} />
-            </div>
-            <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
-                Central de Suporte Técnico & Chamados
-              </h2>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-                Atendimento N3 especializado para clientes da plataforma
-              </span>
-            </div>
-          </div>
-
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '24px' }}>
-            Se você encontrou dificuldades na leitura do seu arquivo bancário, divergência de saldo
-            ou precisa de auxílio para homologar um novo formato de extrato, utilize nosso canal oficial de chamados.
-          </p>
-
-          <div 
+          <div
             style={{
-              padding: '16px',
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            }}
-          >
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              Antes de abrir seu chamado, verifique:
-            </span>
-            {[
-              'Se o formato do extrato exportado do banco é OFX original (sem edição prévia).',
-              'Se o arquivo PDF possui texto selecionável (não é uma imagem escaneada).',
-              'Se o cadastro da conta corrente e banco no Conciliador coincidem com o arquivo.',
-            ].map((check, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                <CheckCircle2 size={14} color="var(--color-primary)" />
-                <span>{check}</span>
-              </div>
-            ))}
-          </div>
-
-          <a
-            href="https://conciliador-contabil2.movidesk.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
               width: '100%',
-              padding: '14px 20px',
-              borderRadius: 'var(--radius-md)',
-              background: 'var(--color-primary)',
-              color: '#1a1d20',
-              fontWeight: 800,
-              fontSize: '0.94rem',
-              textDecoration: 'none',
-              boxShadow: '0 4px 14px rgba(92, 183, 128, 0.3)',
-              transition: 'all 0.2s ease',
+              maxWidth: '440px',
+              background: '#0f172a',
+              borderRadius: '20px',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              padding: '28px',
+              boxShadow: '0 24px 64px rgba(0, 0, 0, 0.6)',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
           >
-            <LifeBuoy size={18} />
-            <span>Acessar Central de Chamados Movidesk</span>
-            <ExternalLink size={16} />
-          </a>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <LifeBuoy size={22} color="#5cb780" />
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#ffffff', fontWeight: 700 }}>
+                  Suporte Técnico
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSupportModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+              Nosso time especializado de suporte está à disposição para auxiliar na parametrização de regras e conciliações contábeis.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <a
+                href="mailto:suporte@conciliadorcontabil.com.br"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                }}
+              >
+                <Mail size={18} color="#38bdf8" />
+                <span>suporte@conciliadorcontabil.com.br</span>
+              </a>
+
+              <a
+                href="https://conciliadorcontabil.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(92, 183, 128, 0.15)',
+                  border: '1px solid rgba(92, 183, 128, 0.3)',
+                  color: '#5cb780',
+                  textDecoration: 'none',
+                  fontSize: '0.88rem',
+                  fontWeight: 700,
+                }}
+              >
+                <Globe size={18} />
+                <span>Acessar Portal do Conciliador Contábil</span>
+                <ExternalLink size={14} style={{ marginLeft: 'auto' }} />
+              </a>
+            </div>
+          </div>
         </div>
       )}
     </div>

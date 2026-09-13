@@ -8,7 +8,6 @@ import {
   Users,
   PlusCircle,
   ExternalLink,
-  LifeBuoy,
   Globe,
   Lock,
 } from 'lucide-react';
@@ -237,37 +236,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
         </nav>
       </div>
 
-      {/* Bottom Hub: Institutional and Support Links */}
-      <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {/* Direct Ticket Help Link */}
-        <a
-          href="https://conciliador-contabil2.movidesk.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '8px 12px',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            color: 'var(--text-muted)',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            textDecoration: 'none',
-            transition: 'all 0.18s ease',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
-        >
-          <LifeBuoy size={16} color="var(--color-primary)" />
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ color: 'var(--text-main)', fontSize: '0.78rem' }}>Suporte Técnico N3</span>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>Central de Chamados</span>
-          </div>
-        </a>
-
+      {/* Bottom Hub: Institutional Link */}
+      <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
         {/* Institutional Link */}
         <a
           href="https://conciliadorcontabil.com.br/"
@@ -277,14 +247,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '6px 12px',
+            padding: '8px 12px',
             fontSize: '0.74rem',
             color: 'var(--text-subtle)',
             borderRadius: 'var(--radius-sm)',
             textDecoration: 'none',
+            border: '1px solid transparent',
+            transition: 'all 0.18s ease',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-primary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-subtle)')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--color-primary)';
+            e.currentTarget.style.borderColor = 'var(--border-subtle)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--text-subtle)';
+            e.currentTarget.style.borderColor = 'transparent';
+          }}
         >
           <span>conciliadorcontabil.com.br</span>
           <ExternalLink size={12} />

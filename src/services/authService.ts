@@ -30,20 +30,12 @@ export function isSuperAdminUser(email: string): boolean {
 
 export function isAdminUser(email: string): boolean {
   const clean = email.trim().toLowerCase();
-  return (
-    isSuperAdminUser(clean) ||
-    clean.includes('igor@conciliadorcontabil.com.br') ||
-    clean.startsWith('igor@') ||
-    clean.includes('rodrigo') ||
-    clean.includes('fontenelle') ||
-    clean.includes('lopes')
-  );
+  return isSuperAdminUser(clean);
 }
 
 export function determineInitialRole(email: string): UserRole {
   const clean = email.trim().toLowerCase();
   if (isSuperAdminUser(clean)) return 'SUPER_ADMIN';
-  if (isAdminUser(clean)) return 'ADMIN';
   if (isCorporateEmailValid(clean)) return 'OPERATOR';
   return 'READER';
 }
@@ -75,9 +67,8 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
 
       if (userDoc.exists()) {
         profile = userDoc.data() as UserProfile;
-        // Se for Rodrigo, Igor ou Fulvio, garante sempre o cargo de ADMIN
-        if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
-          profile.role = 'ADMIN';
+        if (isSuperAdminUser(cleanEmail)) {
+          profile.role = 'SUPER_ADMIN';
         }
         profile.userType = userType;
         profile.displayName = firebaseUser.displayName || profile.displayName;
@@ -218,8 +209,6 @@ export async function loginWithEmailPassword(
     profile = userDoc.data() as UserProfile;
     if (isSuperAdminUser(cleanEmail)) {
       profile.role = 'SUPER_ADMIN';
-    } else if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
-      profile.role = 'ADMIN';
     }
     profile.userType = profile.userType || userType;
     await updateDoc(userRef, {
@@ -287,8 +276,6 @@ export function subscribeAuthState(
           const profile = snapshot.data() as UserProfile;
           if (isSuperAdminUser(cleanEmail)) {
             profile.role = 'SUPER_ADMIN';
-          } else if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
-            profile.role = 'ADMIN';
           }
           profile.userType = profile.userType || userType;
           onUserChanged(firebaseUser, profile);

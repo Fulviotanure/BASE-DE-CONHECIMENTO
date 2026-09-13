@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import type { UserProfile, Article, Category, ToolItem, UserRole, UserType, ArticleStatus, UserPerformance } from '../types';
+import type { UserProfile, Article, Category, ToolItem, UserRole, UserType, ArticleStatus, UserPerformance, ArticleReviewComment } from '../types';
 import { INITIAL_USERS, INITIAL_ARTICLES, INITIAL_CATEGORIES, INITIAL_TOOLS } from '../data/initialSeed';
 import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, type FirebaseConfig } from '../services/firebase';
 import { 
@@ -8,6 +8,7 @@ import {
   logoutUser, 
   isCorporateEmailValid, 
   registerWithEmailPassword, 
+  loginWithEmailPassword,
   loginWithGoogle,
   determineUserType,
   isAdminUser,
@@ -36,7 +37,9 @@ interface AppContextType {
   switchRolePreview: (role: UserRole) => void;
   isRealFirebaseAuth: boolean;
   logout: () => Promise<void>;
-  loginWithGoogleAuth: () => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  loginWithGoogleAuth: (customEmail?: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  registerClientAccount: (email: string, displayName: string, pass: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
   loginAsUser: (user: UserProfile) => void;
   
   // Modais de Autenticação e Perfil
@@ -68,7 +71,8 @@ interface AppContextType {
     contentHtml: string,
     tags: string[],
     accessLevel: 'INTERNAL' | 'EXTERNAL' | 'ALL',
-    proposalNote: string
+    proposalNote: string,
+    attachments?: { id: string; name: string; size: string; url?: string }[]
   ) => void;
 
   // Fluxo Editorial
@@ -77,7 +81,8 @@ interface AppContextType {
     categoryId: string, 
     contentHtml: string, 
     tags: string[], 
-    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL'
+    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
+    attachments?: { id: string; name: string; size: string; url?: string }[]
   ) => void;
   updateArticleContent: (
     articleId: string, 
@@ -85,7 +90,8 @@ interface AppContextType {
     categoryId: string, 
     contentHtml: string, 
     tags: string[], 
-    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL'
+    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
+    attachments?: { id: string; name: string; size: string; url?: string }[]
   ) => void;
   submitReview: (
     articleId: string, 
@@ -93,6 +99,8 @@ interface AppContextType {
     feedback: string, 
     commentMessages?: string[]
   ) => void;
+  addArticleComment: (articleId: string, message: string) => void;
+  incrementArticleView: (articleId: string) => void;
   
   // Central de Ferramentas
   tools: ToolItem[];
@@ -126,14 +134,14 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Lista de Usuários reais da Conciliador Contábil
   const [users, setUsers] = useState<UserProfile[]>(() => {
-    const saved = localStorage.getItem('conciliador_users_v5');
+    const saved = localStorage.getItem('conciliador_users_v7');
     if (!saved) {
-      localStorage.setItem('conciliador_users_v5', JSON.stringify(INITIAL_USERS));
+      localStorage.setItem('conciliador_users_v7', JSON.stringify(INITIAL_USERS));
       return INITIAL_USERS;
     }
     try {
       const parsed: UserProfile[] = JSON.parse(saved);
-      // Garante que todos os 33 membros da equipe estejam presentes
+      // Garante que todos os membros da equipe estejam presentes
       const existingEmails = new Set(parsed.map((u) => u.email.toLowerCase()));
       const missingUsers = INITIAL_USERS.filter((u) => !existingEmails.has(u.email.toLowerCase()));
       const merged = [...parsed, ...missingUsers];
@@ -182,39 +190,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
 
   const [articles, setArticles] = useState<Article[]>(() => {
-    const saved = localStorage.getItem('conciliador_articles_v5');
+    const saved = localStorage.getItem('conciliador_articles_v7');
     if (!saved) {
-      localStorage.setItem('conciliador_articles_v5', JSON.stringify(INITIAL_ARTICLES));
-      return INITIAL_ARTICLES;
+      localStorage.setItem('conciliador_articles_v7', JSON.stringify([]));
+      return [];
     }
     try {
       const parsed: Article[] = JSON.parse(saved);
-      // Garante que os novos artigos do Fulvio (CC-101 e CC-102) estejam presentes
-      const existingIds = new Set(parsed.map((a) => a.id));
-      const missingArticles = INITIAL_ARTICLES.filter((a) => !existingIds.has(a.id));
-      const combined = [...missingArticles, ...parsed];
-      // Garante que cada artigo possua a propriedade code única
-      const withCodes = combined.map((a, idx) => ({
-        ...a,
-        code: a.code || `CC-${101 + idx}`,
-      }));
-      return withCodes;
+      return parsed;
     } catch {
-      return INITIAL_ARTICLES;
+      return [];
     }
   });
 
   // Persistência local contínua
   useEffect(() => {
-    localStorage.setItem('conciliador_users_v5', JSON.stringify(users));
+    localStorage.setItem('conciliador_users_v7', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_articles_v5', JSON.stringify(articles));
+    localStorage.setItem('conciliador_articles_v7', JSON.stringify(articles));
   }, [articles]);
 
   const [tools, setTools] = useState<ToolItem[]>(() => {
-    const saved = localStorage.getItem('conciliador_tools_v3');
+    const saved = localStorage.getItem('conciliador_tools_v5');
     return saved ? JSON.parse(saved) : INITIAL_TOOLS;
   });
 
@@ -308,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [articles]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_tools_v3', JSON.stringify(tools));
+    localStorage.setItem('conciliador_tools_v5', JSON.stringify(tools));
   }, [tools]);
 
   useEffect(() => {
@@ -330,7 +329,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginAsUser = (user: UserProfile) => {
-    setCurrentUser(user);
+    const updatedUser: UserProfile = {
+      ...user,
+      lastLoginAt: new Date().toISOString(),
+    };
+    setUsers((prev) =>
+      prev.map((u) => (u.uid === user.uid ? updatedUser : u))
+    );
+    setCurrentUser(updatedUser);
     if (user.email.toLowerCase().includes('fulvio')) {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
@@ -338,7 +344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAuthModalOpen(false);
   };
 
-  const loginWithGoogleAuth = async (): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+  const loginWithGoogleAuth = async (customEmail?: string): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     try {
       if (isFirebaseConfigured) {
         const res = await loginWithGoogle();
@@ -351,16 +357,140 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAuthModalOpen(false);
         return { success: true, user: res.user };
       } else {
-        const defaultGoogleUser = users.find((u) => u.email.includes('fulvio')) || users[0];
-        setCurrentUser(defaultGoogleUser);
-        setIsPermanentSuperAdmin(true);
-        localStorage.setItem('conciliador_is_superadmin', 'true');
+        const targetEmail = (customEmail || 'fulvio@conciliadorcontabil.com.br').toLowerCase();
+        let user = users.find((u) => u.email.toLowerCase() === targetEmail);
+        const isCorp = targetEmail.endsWith('@conciliadorcontabil.com.br') || targetEmail.includes('fulvio');
+        const isFulvio = targetEmail.includes('fulvio');
+
+        if (!user) {
+          user = {
+            uid: `usr-google-${Date.now()}`,
+            email: targetEmail,
+            displayName: isFulvio ? 'Fulvio Tanure' : targetEmail.split('@')[0],
+            role: isFulvio ? 'SUPER_ADMIN' : isCorp ? 'OPERATOR' : 'READER',
+            userType: isCorp ? 'INTERNAL' : 'EXTERNAL',
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+          };
+          setUsers((prev) => [...prev, user!]);
+        } else {
+          user = {
+            ...user,
+            lastLoginAt: new Date().toISOString(),
+          };
+          setUsers((prev) => prev.map((u) => (u.uid === user!.uid ? user! : u)));
+        }
+
+        setCurrentUser(user);
+        if (isFulvio) {
+          setIsPermanentSuperAdmin(true);
+          localStorage.setItem('conciliador_is_superadmin', 'true');
+        }
         setIsAuthModalOpen(false);
-        return { success: true, user: defaultGoogleUser };
+        return { success: true, user };
       }
     } catch (err: any) {
       return { success: false, error: err.message || 'Erro ao autenticar com o Google.' };
     }
+  };
+
+  const loginWithEmail = async (
+    email: string, 
+    pass: string
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const isCorp = cleanEmail.endsWith('@conciliadorcontabil.com.br') || cleanEmail.includes('fulvio');
+    const isFulvio = cleanEmail.includes('fulvio');
+
+    if (isFirebaseConfigured) {
+      try {
+        const res = await loginWithEmailPassword(cleanEmail, pass);
+        setCurrentUser(res.user);
+        if (res.user.email.toLowerCase().includes('fulvio')) {
+          setIsPermanentSuperAdmin(true);
+          localStorage.setItem('conciliador_is_superadmin', 'true');
+        }
+        setIsRealFirebaseAuth(true);
+        return { success: true, user: res.user };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Erro ao autenticar.' };
+      }
+    }
+
+    // Modo Local
+    let user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!user) {
+      // Regra: e-mail comum -> perfil CLIENTE (READER / EXTERNAL)
+      // e-mail conciliadorcontabil -> OPERADOR (ou SUPER_ADMIN se Fulvio)
+      const role: UserRole = isFulvio ? 'SUPER_ADMIN' : isCorp ? 'OPERATOR' : 'READER';
+      const userType: UserType = isCorp ? 'INTERNAL' : 'EXTERNAL';
+      user = {
+        uid: `usr-${Date.now()}`,
+        email: cleanEmail,
+        displayName: cleanEmail.split('@')[0],
+        role,
+        userType,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      };
+      setUsers((prev) => [...prev, user!]);
+    } else {
+      user = {
+        ...user,
+        lastLoginAt: new Date().toISOString(),
+      };
+      setUsers((prev) => prev.map((u) => (u.uid === user!.uid ? user! : u)));
+    }
+
+    setCurrentUser(user);
+    if (isFulvio) {
+      setIsPermanentSuperAdmin(true);
+      localStorage.setItem('conciliador_is_superadmin', 'true');
+    }
+    return { success: true, user };
+  };
+
+  const registerClientAccount = async (
+    email: string,
+    displayName: string,
+    pass: string
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    // "se criar conta perfil cliente"
+    const role: UserRole = 'READER';
+    const userType: UserType = 'EXTERNAL';
+
+    if (isFirebaseConfigured) {
+      try {
+        const res = await registerWithEmailPassword(cleanEmail, pass, displayName, 'EXTERNAL');
+        setCurrentUser(res.user);
+        setIsRealFirebaseAuth(true);
+        return { success: true, user: res.user };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Erro ao criar conta.' };
+      }
+    }
+
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: 'Este e-mail já está cadastrado no sistema.' };
+    }
+
+    const newUser: UserProfile = {
+      uid: `usr-client-${Date.now()}`,
+      email: cleanEmail,
+      displayName: displayName.trim() || cleanEmail.split('@')[0],
+      role,
+      userType,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+    };
+
+    setUsers((prev) => [...prev, newUser]);
+    setCurrentUser(newUser);
+    return { success: true, user: newUser };
   };
 
   // Simulação de Perfil para o Super Admin testar a visão de qualquer cargo sem perder o controle
@@ -429,14 +559,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     contentHtml: string,
     tags: string[],
     accessLevel: 'INTERNAL' | 'EXTERNAL' | 'ALL',
-    proposalNote: string
+    proposalNote: string,
+    attachments?: { id: string; name: string; size: string; url?: string }[]
   ) => {
     const cat = categories.find((c) => c.id === categoryId);
     const authorName = currentUser?.displayName || 'Colaborador';
-    const proposalComment = {
-      id: `c-prop-${Date.now()}`,
+    const proposalComment: ArticleReviewComment = {
+      id: `comm-prop-${Date.now()}`,
       authorName,
       authorRole: currentUser?.role || 'OPERATOR',
+      authorEmail: currentUser?.email,
       message: `[Proposta de Edição enviada por ${authorName}]: ${proposalNote || 'Revisão do conteúdo sugerida.'}`,
       isResolved: false,
       createdAt: new Date().toISOString(),
@@ -455,6 +587,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             tags,
             accessLevel,
             proposalNote,
+            attachments: attachments || art.attachments,
             currentStatus: 'PENDING', // Vai compulsoriamente para revisão editorial
             updatedAt: new Date().toISOString(),
             reviews: [
@@ -577,7 +710,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     categoryId: string, 
     contentHtml: string, 
     tags: string[],
-    accessLevel: 'INTERNAL' | 'EXTERNAL' | 'ALL' = 'INTERNAL'
+    accessLevel: 'INTERNAL' | 'EXTERNAL' | 'ALL' = 'INTERNAL',
+    attachments?: { id: string; name: string; size: string; url?: string }[]
   ) => {
     const cat = categories.find((c) => c.id === categoryId);
 
@@ -605,10 +739,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentStatus: 'PENDING',
       accessLevel,
       tags,
-      viewCount: 1,
+      viewCount: 0,
       likesCount: 0,
       dislikesCount: 0,
       contentHtml,
+      attachments,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -630,7 +765,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     categoryId: string,
     contentHtml: string,
     tags: string[],
-    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL'
+    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
+    attachments?: { id: string; name: string; size: string; url?: string }[]
   ) => {
     const cat = categories.find((c) => c.id === categoryId);
     const updates: Partial<Article> = {
@@ -642,6 +778,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentStatus: 'PENDING',
       updatedAt: new Date().toISOString(),
       ...(accessLevel ? { accessLevel } : {}),
+      ...(attachments ? { attachments } : {}),
     };
 
     setArticles((prev) =>
@@ -705,12 +842,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setArticles((prev) =>
       prev.map((art) => {
         if (art.id === articleId) {
+          const currentComments = art.comments || [];
+          const decisionComment: ArticleReviewComment | null = feedback.trim()
+            ? {
+                id: `comm-dec-${Date.now()}`,
+                authorName: currentUser?.displayName || 'Revisor',
+                authorRole: currentUser?.role || 'REVIEWER',
+                authorEmail: currentUser?.email,
+                message: `[Decisão: ${action === 'APPROVE' ? 'Aprovado' : action === 'REQUEST_ADJUSTMENT' ? 'Ajustes Solicitados' : 'Rejeitado'}]: ${feedback.trim()}`,
+                isResolved: action === 'APPROVE',
+                createdAt: new Date().toISOString(),
+              }
+            : null;
+
+          const updatedComments = decisionComment ? [...currentComments, decisionComment] : currentComments;
+
           const updated: Article = {
             ...art,
             currentStatus: newStatus,
             publishedAt: action === 'APPROVE' ? new Date().toISOString() : art.publishedAt,
             updatedAt: new Date().toISOString(),
             reviews: [newReview, ...(art.reviews || [])],
+            comments: updatedComments,
           };
 
           if (selectedArticle?.id === articleId) {
@@ -723,11 +876,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               publishedAt: updated.publishedAt,
               updatedAt: updated.updatedAt,
               reviews: updated.reviews,
+              comments: updated.comments,
             }).catch((err) => {
               console.warn('Erro ao atualizar review no Firestore:', err);
             });
           }
 
+          return updated;
+        }
+        return art;
+      })
+    );
+  };
+
+  // Adiciona mensagem no balão de conversa entre revisor e criador
+  const addArticleComment = (articleId: string, message: string) => {
+    if (!message.trim()) return;
+    const authorName = currentUser?.displayName || 'Usuário';
+    const authorRole = currentUser?.role || 'OPERATOR';
+    const authorEmail = currentUser?.email;
+
+    const newComment: ArticleReviewComment = {
+      id: `comm-${Date.now()}`,
+      authorName,
+      authorRole,
+      authorEmail,
+      message: message.trim(),
+      isResolved: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setArticles((prev) =>
+      prev.map((art) => {
+        if (art.id === articleId) {
+          const currentComments = art.comments || [];
+          const updated: Article = {
+            ...art,
+            comments: [...currentComments, newComment],
+            updatedAt: new Date().toISOString(),
+          };
+          if (selectedArticle?.id === articleId) {
+            setSelectedArticle(updated);
+          }
+          if (isFirebaseConfigured) {
+            updateArticleInFirestore(articleId, {
+              comments: updated.comments,
+              updatedAt: updated.updatedAt,
+            }).catch(console.warn);
+          }
+          return updated;
+        }
+        return art;
+      })
+    );
+  };
+
+  // Incremento de visualizações reais
+  const incrementArticleView = (articleId: string) => {
+    setArticles((prev) =>
+      prev.map((art) => {
+        if (art.id === articleId) {
+          const updated = {
+            ...art,
+            viewCount: (art.viewCount || 0) + 1,
+          };
+          if (selectedArticle?.id === articleId) {
+            setSelectedArticle(updated);
+          }
+          if (isFirebaseConfigured) {
+            updateArticleInFirestore(articleId, { viewCount: updated.viewCount }).catch(console.warn);
+          }
           return updated;
         }
         return art;
@@ -795,6 +1013,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isRealFirebaseAuth,
         logout,
         loginWithGoogleAuth,
+        loginWithEmail,
+        registerClientAccount,
         loginAsUser,
         isAuthModalOpen,
         setIsAuthModalOpen,
@@ -815,6 +1035,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createArticle,
         updateArticleContent,
         submitReview,
+        addArticleComment,
+        incrementArticleView,
         tools,
         addTool,
         getUserPerformances,

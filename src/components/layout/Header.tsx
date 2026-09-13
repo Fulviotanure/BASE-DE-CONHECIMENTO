@@ -48,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
       {/* Brand Logo & Title */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <img
-          src="/conciliador-logo.png"
+          src={theme === 'light' ? '/logo-light.svg' : '/conciliador-logo.png'}
           alt="Conciliador Contábil"
           style={{ height: '36px', width: 'auto', objectFit: 'contain', cursor: 'pointer' }}
           onClick={() => {
@@ -78,15 +78,15 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
                 textTransform: 'uppercase',
               }}
             >
-              {currentUser ? (isInternal ? 'INTERNO' : 'PORTAL CLIENTE') : 'INSTITUCIONAL'}
+              {currentUser ? (isInternal ? 'INTERNO' : 'CLIENTE') : 'INSTITUCIONAL'}
             </span>
           </span>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Conciliador Contábil</span>
         </div>
       </div>
 
-      {/* Global Search Bar trigger - Oculto na Landing Page ou quando Deslogado */}
-      {currentUser && activeView !== 'landing' ? (
+      {/* Global Search Bar trigger - Apenas para Colaboradores Internos */}
+      {!isExternal && currentUser && activeView !== 'landing' ? (
         <div style={{ flex: 1, maxWidth: '440px', margin: '0 24px' }}>
           <button
             type="button"
