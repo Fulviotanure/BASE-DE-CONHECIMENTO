@@ -12,7 +12,9 @@ import {
   ShieldAlert,
   ArrowRight,
   Download,
-  Lock
+  Lock,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article, ToolItem } from '../../types';
@@ -26,20 +28,21 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
   onBackToPresentation,
   onSelectArticle 
 }) => {
-  const { articles, tools, currentUser, setIsAuthModalOpen, setSelectedArticle } = useApp();
+  const { articles, tools, currentUser, setIsAuthModalOpen, setSelectedArticle, voteArticle } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'articles' | 'downloads' | 'support'>('articles');
   const [readingArticle, setReadingArticle] = useState<Article | null>(null);
 
-  // Filtra artigos públicos (accessLevel !== 'INTERNAL')
+  // Filtra apenas artigos públicos / externos (accessLevel === 'ALL' || accessLevel === 'EXTERNAL')
   const publicArticles = articles.filter(
-    (a) => a.currentStatus === 'APPROVED' && a.accessLevel !== 'INTERNAL'
+    (a) => a.currentStatus === 'APPROVED' && (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL')
   );
 
   const filteredArticles = publicArticles.filter((a) => {
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     return (
+      (a.code && a.code.toLowerCase().includes(q)) ||
       a.title.toLowerCase().includes(q) ||
       a.categoryName.toLowerCase().includes(q) ||
       a.tags.some((t) => t.toLowerCase().includes(q))
@@ -234,7 +237,22 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                 ← Voltar para a listagem de manuais
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {readingArticle.code || 'CC-DOC'}
+                </span>
                 <span 
                   style={{
                     fontSize: '0.72rem',
@@ -248,7 +266,7 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                   {readingArticle.categoryName}
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                  Visualizado {readingArticle.viewCount} vezes
+                  Criado por: <strong>{readingArticle.authorName || 'Fulvio Tanure'}</strong> em {new Date(readingArticle.createdAt).toLocaleDateString('pt-BR')} • {readingArticle.viewCount} visualizações
                 </span>
               </div>
 
@@ -264,6 +282,70 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                 }}
                 dangerouslySetInnerHTML={{ __html: readingArticle.contentHtml }}
               />
+
+              {/* Helpful Feedback: Joinha & Deslike com Contadores */}
+              <div
+                style={{
+                  marginTop: '32px',
+                  padding: '20px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    Este manual técnico esclareceu sua dúvida?
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => voteArticle(readingArticle.id, 'like')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      color: '#10b981',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <ThumbsUp size={14} />
+                    <span>Útil ({readingArticle.likesCount || 0})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => voteArticle(readingArticle.id, 'dislike')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#ef4444',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <ThumbsDown size={14} />
+                    <span>Não ajudou ({readingArticle.dislikesCount || 0})</span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <div>
@@ -326,18 +408,34 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                   >
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <span 
-                          style={{
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            padding: '2px 7px',
-                            borderRadius: '4px',
-                            background: 'var(--color-primary-subtle)',
-                            color: 'var(--color-primary)',
-                          }}
-                        >
-                          {art.categoryName}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                              color: '#38bdf8',
+                              border: '1px solid rgba(56, 189, 248, 0.3)',
+                              fontFamily: 'monospace',
+                            }}
+                          >
+                            {art.code || 'CC-DOC'}
+                          </span>
+                          <span 
+                            style={{
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              background: 'var(--color-primary-subtle)',
+                              color: 'var(--color-primary)',
+                            }}
+                          >
+                            {art.categoryName}
+                          </span>
+                        </div>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
                           Manual Oficial
                         </span>
@@ -347,9 +445,13 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                         {art.title}
                       </h3>
 
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 10px 0' }}>
                         Orientações para exportação no banco, formatação correta e validação no Conciliador.
                       </p>
+
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: '12px' }}>
+                        Criado por: <strong>{art.authorName || 'Fulvio Tanure'}</strong> • {new Date(art.createdAt).toLocaleDateString('pt-BR')}
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
@@ -370,9 +472,21 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
                         ))}
                       </div>
 
-                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        Ler manual <ArrowRight size={13} />
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem' }}>
+                          <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+                            <ThumbsUp size={12} />
+                            {art.likesCount || 0}
+                          </span>
+                          <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+                            <ThumbsDown size={12} />
+                            {art.dislikesCount || 0}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          Ler manual <ArrowRight size={13} />
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}

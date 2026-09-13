@@ -23,16 +23,29 @@ export function determineUserType(email: string): UserType {
   return isCorporateEmailValid(email) ? 'INTERNAL' : 'EXTERNAL';
 }
 
+export function isSuperAdminUser(email: string): boolean {
+  const clean = email.trim().toLowerCase();
+  return clean.includes('fulvio');
+}
+
 export function isAdminUser(email: string): boolean {
   const clean = email.trim().toLowerCase();
   return (
-    clean.includes('fulvio') ||
+    isSuperAdminUser(clean) ||
     clean.includes('igor@conciliadorcontabil.com.br') ||
     clean.startsWith('igor@') ||
     clean.includes('rodrigo') ||
     clean.includes('fontenelle') ||
     clean.includes('lopes')
   );
+}
+
+export function determineInitialRole(email: string): UserRole {
+  const clean = email.trim().toLowerCase();
+  if (isSuperAdminUser(clean)) return 'SUPER_ADMIN';
+  if (isAdminUser(clean)) return 'ADMIN';
+  if (isCorporateEmailValid(clean)) return 'OPERATOR';
+  return 'READER';
 }
 
 /**
@@ -51,7 +64,7 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
   const firebaseUser = cred.user;
   const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
   const userType: UserType = determineUserType(cleanEmail);
-  const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
+  const initialRole: UserRole = determineInitialRole(cleanEmail);
 
   let profile: UserProfile;
 
@@ -158,7 +171,7 @@ export async function registerWithEmailPassword(
     displayName: formattedName,
   });
 
-  const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
+  const initialRole: UserRole = determineInitialRole(cleanEmail);
 
   const userProfile: UserProfile = {
     uid: cred.user.uid,
@@ -203,7 +216,9 @@ export async function loginWithEmailPassword(
 
   if (userDoc.exists()) {
     profile = userDoc.data() as UserProfile;
-    if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
+    if (isSuperAdminUser(cleanEmail)) {
+      profile.role = 'SUPER_ADMIN';
+    } else if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
       profile.role = 'ADMIN';
     }
     profile.userType = profile.userType || userType;
@@ -214,7 +229,7 @@ export async function loginWithEmailPassword(
       serverLastLoginAt: serverTimestamp(),
     });
   } else {
-    const initialRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
+    const initialRole: UserRole = determineInitialRole(cleanEmail);
     profile = {
       uid: cred.user.uid,
       email: cleanEmail,
@@ -262,7 +277,7 @@ export function subscribeAuthState(
 
     const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
     const userType: UserType = determineUserType(cleanEmail);
-    const calculatedRole: UserRole = isAdminUser(cleanEmail) ? 'ADMIN' : 'OPERATOR';
+    const calculatedRole: UserRole = determineInitialRole(cleanEmail);
 
     if (db) {
       try {
@@ -270,7 +285,9 @@ export function subscribeAuthState(
         const snapshot = await getDoc(userRef);
         if (snapshot.exists()) {
           const profile = snapshot.data() as UserProfile;
-          if (isAdminUser(cleanEmail)) {
+          if (isSuperAdminUser(cleanEmail)) {
+            profile.role = 'SUPER_ADMIN';
+          } else if (isAdminUser(cleanEmail) && profile.role !== 'ADMIN') {
             profile.role = 'ADMIN';
           }
           profile.userType = profile.userType || userType;

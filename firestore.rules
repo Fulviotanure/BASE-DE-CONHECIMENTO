@@ -23,7 +23,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isCorporateEmail() && 
-        (getUserData().role == 'ADMIN' || 
+        (getUserData().role == 'SUPER_ADMIN' || 
+         getUserData().role == 'ADMIN' || 
          request.auth.token.email.matches('.*fulvio.*') ||
          request.auth.token.email.matches('.*igor.*') ||
          request.auth.token.email.matches('.*rodrigo.*') ||
@@ -52,17 +53,19 @@ service cloud.firestore {
 
     // Coleção de Artigos
     match /articles/{articleId} {
-      allow read: if (resource.data.accessLevel == 'ALL') || 
+      allow read: if (resource.data.accessLevel == 'ALL' || resource.data.accessLevel == 'EXTERNAL') || 
         (isCorporateEmail() && (
           resource.data.currentStatus == 'APPROVED' ||
           resource.data.authorId == request.auth.uid ||
           isReviewer()
         ));
       allow create: if isCorporateEmail() && request.resource.data.currentStatus == 'PENDING';
-      allow update: if isCorporateEmail() && (
-        isReviewer() || 
-        (resource.data.authorId == request.auth.uid && request.resource.data.currentStatus == 'PENDING')
-      );
+      allow update: if 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'dislikesCount']) ||
+        (isCorporateEmail() && (
+          isReviewer() || 
+          (resource.data.authorId == request.auth.uid && request.resource.data.currentStatus == 'PENDING')
+        ));
       allow delete: if isAdmin();
 
       // Subcoleções de Versões e Reviews
@@ -84,7 +87,7 @@ service cloud.firestore {
 
     // Central de Ferramentas & Softwares
     match /tools_links/{toolId} {
-      allow read: if (resource.data.accessLevel == 'ALL') || isCorporateEmail();
+      allow read: if (resource.data.accessLevel == 'ALL' || resource.data.accessLevel == 'EXTERNAL') || isCorporateEmail();
       allow write: if isAdmin();
     }
 

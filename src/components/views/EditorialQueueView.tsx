@@ -236,7 +236,22 @@ export const EditorialQueueView: React.FC = () => {
               }}
             >
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: 'rgba(92, 183, 128, 0.15)',
+                      color: 'var(--color-primary)',
+                      border: '1px solid rgba(92, 183, 128, 0.3)',
+                      fontFamily: 'monospace',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {art.code || 'CC-DOC'}
+                  </span>
                   <span
                     className={
                       art.currentStatus === 'PENDING'
@@ -268,7 +283,35 @@ export const EditorialQueueView: React.FC = () => {
                   >
                     {art.categoryName}
                   </span>
+                  <span
+                    style={{
+                      fontSize: '0.68rem',
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      background: art.accessLevel === 'ALL' || art.accessLevel === 'EXTERNAL' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(92, 183, 128, 0.12)',
+                      color: art.accessLevel === 'ALL' || art.accessLevel === 'EXTERNAL' ? '#38bdf8' : 'var(--color-primary)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {art.accessLevel === 'ALL' || art.accessLevel === 'EXTERNAL' ? '🌐 Público' : '🔒 Interno'}
+                  </span>
                 </div>
+
+                {art.proposalNote && (
+                  <div
+                    style={{
+                      margin: '6px 0 8px 0',
+                      padding: '6px 10px',
+                      borderRadius: '4px',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.25)',
+                      fontSize: '0.78rem',
+                      color: '#f59e0b',
+                    }}
+                  >
+                    <strong>📝 Proposta de Edição:</strong> {art.proposalNote}
+                  </div>
+                )}
 
                 <h3 style={{ fontSize: '1.1rem', color: 'var(--text-main)', marginBottom: '8px' }}>
                   {art.title}
@@ -277,11 +320,11 @@ export const EditorialQueueView: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <User size={13} color="var(--color-primary)" />
-                    Autor: {art.authorName} ({art.authorEmail})
+                    <strong>Criado por:</strong> {art.authorName || 'Fulvio Tanure'} ({art.authorEmail})
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <Calendar size={13} />
-                    Submetido em {new Date(art.createdAt).toLocaleDateString('pt-BR')}
+                    <strong>Criado em:</strong> {new Date(art.createdAt).toLocaleDateString('pt-BR')} às {new Date(art.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>
@@ -376,9 +419,44 @@ export const EditorialQueueView: React.FC = () => {
                   background: 'var(--bg-card)',
                 }}
               >
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginBottom: '14px' }}>
-                  Autor: <strong>{selectedReviewArticle.authorName}</strong> • Módulo: <strong>{selectedReviewArticle.categoryName}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      background: 'rgba(92, 183, 128, 0.15)',
+                      color: 'var(--color-primary)',
+                      border: '1px solid rgba(92, 183, 128, 0.3)',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {selectedReviewArticle.code || 'CC-DOC'}
+                  </span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
+                    Criado por: <strong>{selectedReviewArticle.authorName || 'Fulvio Tanure'}</strong> ({selectedReviewArticle.authorEmail}) em {new Date(selectedReviewArticle.createdAt).toLocaleDateString('pt-BR')} às {new Date(selectedReviewArticle.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • Módulo: <strong>{selectedReviewArticle.categoryName}</strong>
+                  </span>
                 </div>
+
+                {selectedReviewArticle.proposalNote && (
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      borderRadius: 'var(--radius-md)',
+                      marginBottom: '16px',
+                      fontSize: '0.82rem',
+                      color: '#f59e0b',
+                    }}
+                  >
+                    <strong>📝 Justificativa da Proposta de Edição:</strong>
+                    <div style={{ marginTop: '4px', color: 'var(--text-main)', fontSize: '0.86rem' }}>
+                      {selectedReviewArticle.proposalNote}
+                    </div>
+                  </div>
+                )}
 
                 <div
                   style={{ fontSize: '0.92rem', lineHeight: 1.7, color: 'var(--text-main)' }}

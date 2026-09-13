@@ -16,24 +16,32 @@ import {
   Sparkles,
   Info,
   CheckSquare2,
+  Lock,
+  Globe,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
 
 interface ArticleEditorViewProps {
   editingArticle: Article | null;
+  isProposalMode?: boolean;
   onClose: () => void;
 }
 
 export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   editingArticle,
+  isProposalMode = false,
   onClose,
 }) => {
-  const { categories, createArticle, updateArticleContent, currentUser } = useApp();
+  const { categories, createArticle, updateArticleContent, proposeArticleEdit, currentUser } = useApp();
 
   const [title, setTitle] = useState(editingArticle?.title || '');
   const [categoryId, setCategoryId] = useState(editingArticle?.categoryId || categories[0]?.id || '');
   const [tagInput, setTagInput] = useState(editingArticle?.tags.join(', ') || '');
+  const [accessLevel, setAccessLevel] = useState<'INTERNAL' | 'ALL'>(
+    editingArticle?.accessLevel === 'ALL' || editingArticle?.accessLevel === 'EXTERNAL' ? 'ALL' : 'INTERNAL'
+  );
+  const [proposalNote, setProposalNote] = useState(editingArticle?.proposalNote || '');
   const [content, setContent] = useState(
     editingArticle?.contentHtml ||
       `<h2>Visão Geral do Procedimento</h2>\n<p>Descreva detalhadamente o passo a passo da rotina contábil...</p>\n\n<div class="callout callout-info">\n  <strong>💡 Dica:</strong> Utilize arquivos no formato .OFX para maior precisão no confronto.\n</div>`
@@ -62,10 +70,25 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       .map((t) => t.trim().replace(/^#/, ''))
       .filter(Boolean);
 
-    if (editingArticle) {
-      updateArticleContent(editingArticle.id, title.trim(), categoryId, content, tags);
+    if (isProposalMode && editingArticle) {
+      if (!proposalNote.trim()) {
+        alert('Por favor, preencha a justificativa da proposta de edição para orientar os revisores.');
+        return;
+      }
+      proposeArticleEdit(
+        editingArticle.id,
+        title.trim(),
+        categoryId,
+        content,
+        tags,
+        accessLevel,
+        proposalNote.trim()
+      );
+      alert('Proposta de edição submetida com sucesso para a Fila Editorial!');
+    } else if (editingArticle) {
+      updateArticleContent(editingArticle.id, title.trim(), categoryId, content, tags, accessLevel);
     } else {
-      createArticle(title.trim(), categoryId, content, tags);
+      createArticle(title.trim(), categoryId, content, tags, accessLevel);
     }
 
     onClose();
@@ -94,12 +117,38 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             <span>Voltar</span>
           </button>
           <div>
-            <h1 style={{ fontSize: '1.25rem', color: 'var(--text-main)', margin: 0 }}>
-              {editingArticle ? `Editando: ${editingArticle.title}` : 'Redigir Novo Artigo Técnico'}
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+              {editingArticle?.code && (
+                <span
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 800,
+                    padding: '2px 7px',
+                    borderRadius: '4px',
+                    background: 'rgba(92, 183, 128, 0.15)',
+                    color: 'var(--color-primary)',
+                    border: '1px solid rgba(92, 183, 128, 0.3)',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {editingArticle.code}
+                </span>
+              )}
+              <h1 style={{ fontSize: '1.25rem', color: 'var(--text-main)', margin: 0 }}>
+                {isProposalMode
+                  ? `📝 Proposta de Edição: ${editingArticle?.title || 'Artigo'}`
+                  : editingArticle
+                  ? `Editando: ${editingArticle.title}`
+                  : 'Redigir Novo Artigo Técnico'}
+              </h1>
+            </div>
             <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
-              {isAdjustmentMode
+              {isProposalMode
+                ? 'Sua proposta de edição será avaliada pela Fila de Revisores antes da publicação'
+                : isAdjustmentMode
                 ? 'Artigo em fase de ajuste • Siga as notas na barra lateral direita'
+                : editingArticle
+                ? `Criado por: ${editingArticle.authorName || 'Fulvio Tanure'} em ${new Date(editingArticle.createdAt).toLocaleDateString('pt-BR')}`
                 : 'Todo input é submetido para a fila de revisão antes de ser publicado'}
             </span>
           </div>
@@ -119,7 +168,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             onClick={handleSaveAndSubmit}
           >
             <Send size={14} />
-            <span>Submeter para Revisão</span>
+            <span>{isProposalMode ? 'Enviar Proposta para Revisão' : 'Submeter para Revisão'}</span>
           </button>
         </div>
       </div>
@@ -178,25 +227,110 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             </div>
           </div>
 
-          {/* Tags */}
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              Tags & Palavras-Chave (separadas por vírgula):
-            </label>
-            <input
-              type="text"
-              placeholder="OFX, SISPAG, Banco Itaú, Regras, Domínio"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: 'var(--bg-input)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '0.82rem',
-              }}
-            />
+          {/* Proposta de Edição Justification (Quando em modo proposta) */}
+          {isProposalMode && (
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--status-pending)', marginBottom: '4px' }}>
+                📝 Justificativa / Motivo da Proposta de Edição (Obrigatório para revisão):
+              </label>
+              <textarea
+                rows={3}
+                required
+                value={proposalNote}
+                onChange={(e) => setProposalNote(e.target.value)}
+                placeholder="Descreva o que mudou na regra de conciliação, layout do extrato, correção de procedimento..."
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-main)',
+                  lineHeight: 1.5,
+                  outline: 'none',
+                }}
+              />
+            </div>
+          )}
+
+          {/* Row: Visibilidade & Tags */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            {/* Visibilidade: Interno vs Externo */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                Visibilidade do Artigo:
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setAccessLevel('INTERNAL')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    border: `1px solid ${accessLevel === 'INTERNAL' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                    background: accessLevel === 'INTERNAL' ? 'var(--color-primary-subtle)' : 'var(--bg-input)',
+                    color: accessLevel === 'INTERNAL' ? 'var(--color-primary)' : 'var(--text-muted)',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Lock size={14} />
+                  <span>🔒 Interno (Equipe)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccessLevel('ALL')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-md)',
+                    border: `1px solid ${accessLevel === 'ALL' ? '#38bdf8' : 'var(--border-subtle)'}`,
+                    background: accessLevel === 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-input)',
+                    color: accessLevel === 'ALL' ? '#38bdf8' : 'var(--text-muted)',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Globe size={14} />
+                  <span>🌐 Externo (Clientes)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                Tags & Palavras-Chave (separadas por vírgula):
+              </label>
+              <input
+                type="text"
+                placeholder="OFX, SISPAG, Banco Itaú, Regras, Domínio"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.82rem',
+                }}
+              />
+            </div>
           </div>
 
           {/* Formatting Toolbar */}

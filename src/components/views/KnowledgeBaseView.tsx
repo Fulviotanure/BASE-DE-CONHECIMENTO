@@ -19,15 +19,22 @@ import {
   Share2,
   Check,
   Bookmark,
+  FileEdit,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
 
 interface KnowledgeBaseViewProps {
   onOpenNewArticle: () => void;
+  onProposeEdit?: (art: Article) => void;
 }
 
-export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewArticle }) => {
+export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ 
+  onOpenNewArticle,
+  onProposeEdit 
+}) => {
   const {
     categories,
     articles,
@@ -35,6 +42,8 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
     setSelectedCategory,
     selectedArticle,
     setSelectedArticle,
+    voteArticle,
+    currentUser,
   } = useApp();
 
   const [copiedLink, setCopiedLink] = useState(false);
@@ -56,8 +65,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
     }
   };
 
-  // Artigos aprovados para consulta pública
-  const approvedArticles = articles.filter((a) => a.currentStatus === 'APPROVED');
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
+  // Artigos aprovados (se for externo/leitor, pode apenas ver o que estiver marcado como externo)
+  const approvedArticles = articles.filter(
+    (a) => a.currentStatus === 'APPROVED' && (!isExternal || (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL'))
+  );
 
   const filteredArticles = selectedCategory
     ? approvedArticles.filter((a) => a.categoryId === selectedCategory)
@@ -93,39 +105,101 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
 
         {/* Article Header Card */}
         <div className="card" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '14px' }}>
-            <h1 style={{ fontSize: '1.75rem', lineHeight: 1.25, color: 'var(--text-main)' }}>
-              {selectedArticle.title}
-            </h1>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleCopyLink}
-              title="Copiar link permanente"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <span
+              style={{
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                padding: '3px 8px',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(92, 183, 128, 0.15)',
+                color: 'var(--color-primary)',
+                border: '1px solid rgba(92, 183, 128, 0.35)',
+                fontFamily: 'monospace',
+                letterSpacing: '0.04em',
+              }}
             >
-              {copiedLink ? <Check size={14} color="#10b981" /> : <Share2 size={14} />}
-              <span>{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
-            </button>
+              {selectedArticle.code || 'CC-DOC'}
+            </span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
+              Código Único de Referência Rápida
+            </span>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: '1.75rem', lineHeight: 1.25, color: 'var(--text-main)', margin: 0, flex: 1 }}>
+              {selectedArticle.title}
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {onProposeEdit && !isExternal && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => onProposeEdit(selectedArticle)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    borderColor: 'rgba(92, 183, 128, 0.4)',
+                    color: 'var(--color-primary)',
+                    fontWeight: 700,
+                  }}
+                  title="Propor alteração ou correção neste artigo técnico"
+                >
+                  <FileEdit size={14} />
+                  <span>Propor Edição</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleCopyLink}
+                title="Copiar link permanente"
+              >
+                {copiedLink ? <Check size={14} color="#10b981" /> : <Share2 size={14} />}
+                <span>{copiedLink ? 'Copiado!' : 'Compartilhar'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <User size={14} color="var(--color-primary)" />
-              {selectedArticle.authorName} ({selectedArticle.authorEmail})
+              <strong>Criado por:</strong> {selectedArticle.authorName || 'Fulvio Tanure'} {selectedArticle.authorEmail ? `(${selectedArticle.authorEmail})` : ''}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Calendar size={14} />
-              Publicado em {new Date(selectedArticle.createdAt).toLocaleDateString('pt-BR')}
+              <strong>Criado em:</strong> {new Date(selectedArticle.createdAt).toLocaleDateString('pt-BR')} às {new Date(selectedArticle.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Eye size={14} />
               {selectedArticle.viewCount} visualizações
             </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontWeight: 700 }}>
+              <ThumbsUp size={13} />
+              {selectedArticle.likesCount || 0}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#ef4444', fontWeight: 700 }}>
+              <ThumbsDown size={13} />
+              {selectedArticle.dislikesCount || 0}
+            </span>
+            <span 
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-full)',
+                background: selectedArticle.accessLevel === 'ALL' || selectedArticle.accessLevel === 'EXTERNAL' ? 'rgba(56, 189, 248, 0.15)' : 'var(--color-primary-subtle)',
+                color: selectedArticle.accessLevel === 'ALL' || selectedArticle.accessLevel === 'EXTERNAL' ? '#38bdf8' : 'var(--color-primary)',
+              }}
+            >
+              {selectedArticle.accessLevel === 'ALL' || selectedArticle.accessLevel === 'EXTERNAL' ? '🌐 Externo (Público)' : '🔒 Interno'}
+            </span>
             <span className="badge badge-approved">Aprovado & Oficial</span>
           </div>
 
           {/* Tags */}
-          <div style={{ display: 'flex', gap: '6px', marginTop: '16px' }}>
+          <div style={{ display: 'flex', gap: '6px', marginTop: '16px', flexWrap: 'wrap' }}>
             {selectedArticle.tags.map((tag) => (
               <span
                 key={tag}
@@ -156,7 +230,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
           dangerouslySetInnerHTML={{ __html: selectedArticle.contentHtml }}
         />
 
-        {/* Helpful Feedback Footer */}
+        {/* Helpful Feedback Footer: Joinha & Deslike com Contagem */}
         <div
           style={{
             marginTop: '28px',
@@ -167,26 +241,32 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Bookmark size={18} color="var(--color-primary)" />
             <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>Este artigo te ajudou na sua rotina de conciliação?</span>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => alert('Obrigado pelo seu feedback!')}
+              onClick={() => voteArticle(selectedArticle.id, 'like')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
             >
-              👍 Sim, esclareceu
+              <ThumbsUp size={14} color="#10b981" />
+              <span>Sim, ajudou ({selectedArticle.likesCount || 0})</span>
             </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => alert('Feedback registrado. Vamos aprimorar!')}
+              onClick={() => voteArticle(selectedArticle.id, 'dislike')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
             >
-              👎 Precisa de melhorias
+              <ThumbsDown size={14} color="#ef4444" />
+              <span>Não ({selectedArticle.dislikesCount || 0})</span>
             </button>
           </div>
         </div>
@@ -406,7 +486,22 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
                 }}
               >
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(92, 183, 128, 0.15)',
+                        color: 'var(--color-primary)',
+                        border: '1px solid rgba(92, 183, 128, 0.3)',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {art.code || 'CC-DOC'}
+                    </span>
                     <span
                       style={{
                         fontSize: '0.7rem',
@@ -419,14 +514,26 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
                     >
                       {art.categoryName}
                     </span>
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        background: art.accessLevel === 'ALL' || art.accessLevel === 'EXTERNAL' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(92, 183, 128, 0.12)',
+                        color: art.accessLevel === 'ALL' || art.accessLevel === 'EXTERNAL' ? '#38bdf8' : 'var(--color-primary)',
+                      }}
+                    >
+                      {art.accessLevel === 'ALL' || art.accessLevel === 'EXTERNAL' ? '🌐 Público' : '🔒 Interno'}
+                    </span>
                     <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
-                      Por {art.authorName} • {new Date(art.createdAt).toLocaleDateString('pt-BR')}
+                      Criado por: <strong>{art.authorName || 'Fulvio Tanure'}</strong> • {new Date(art.createdAt).toLocaleDateString('pt-BR')}
                     </span>
                   </div>
                   <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', marginBottom: '6px' }}>
                     {art.title}
                   </h3>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {art.tags.slice(0, 3).map((tag) => (
                       <span key={tag} style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
                         #{tag}
@@ -435,7 +542,17 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onOpenNewA
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
+                    <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+                      <ThumbsUp size={12} />
+                      {art.likesCount || 0}
+                    </span>
+                    <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+                      <ThumbsDown size={12} />
+                      {art.dislikesCount || 0}
+                    </span>
+                  </div>
                   <div style={{ textAlign: 'right', fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
                     <Eye size={13} style={{ verticalAlign: 'middle', marginRight: '3px' }} />
                     {art.viewCount}

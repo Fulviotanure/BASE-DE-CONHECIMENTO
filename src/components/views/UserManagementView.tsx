@@ -83,10 +83,9 @@ export const UserManagementView: React.FC = () => {
       >
         <ShieldCheck size={28} color="var(--color-primary)" />
         <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-          <strong>Governança de Acessos:</strong> Colaboradores com e-mail corporativo{' '}
-          <code>@conciliadorcontabil.com.br</code> possuem acesso à área interna. Usuários Rodrigo, Igor e Fulvio
-          possuem privilégios de <strong>Administrador</strong>. Novos colaboradores são cadastrados como <strong>Operador</strong>,
-          podendo ser promovidos para Revisor ou Administrador.
+          <strong>Governança de Acessos & RBAC:</strong> Fulvio é o <strong>Super Administrador Fixo</strong> com gestão plena.
+          Rodrigo e Igor atuam como <strong>Administradores</strong>. Colaboradores corporativos atuam como <strong>Operadores</strong> ou <strong>Revisores</strong>.
+          Clientes externos são classificados como <strong>Leitores</strong> e possuem visualização estritamente limitada a manuais públicos/externos.
         </div>
       </div>
 
@@ -180,22 +179,32 @@ export const UserManagementView: React.FC = () => {
                           fontSize: '0.82rem',
                           fontWeight: 600,
                           color:
-                            u.role === 'ADMIN'
+                            u.role === 'SUPER_ADMIN'
+                              ? '#f59e0b'
+                              : u.role === 'ADMIN'
                               ? 'var(--color-primary)'
                               : u.role === 'REVIEWER'
                               ? 'var(--color-secondary)'
+                              : u.role === 'READER'
+                              ? '#38bdf8'
                               : 'var(--text-main)',
                           cursor: isFulvio ? 'not-allowed' : 'pointer',
                         }}
                       >
+                        <option value="READER" style={{ background: '#1e2227', color: '#38bdf8' }}>
+                          👤 Leitor (Cliente Externo)
+                        </option>
                         <option value="OPERATOR" style={{ background: '#1e2227', color: '#fff' }}>
-                          👷 Operador (Usuário Comum)
+                          👷 Operador (Colaborador Interno)
                         </option>
                         <option value="REVIEWER" style={{ background: '#1e2227', color: '#6c63ff' }}>
-                          ✍️ Editor / Revisor
+                          ✍️ Revisor / Editor
                         </option>
                         <option value="ADMIN" style={{ background: '#1e2227', color: '#5cb780' }}>
-                          👑 Administrador
+                          🛡️ Administrador
+                        </option>
+                        <option value="SUPER_ADMIN" style={{ background: '#1e2227', color: '#f59e0b' }}>
+                          👑 Super Administrador
                         </option>
                       </select>
                     </td>

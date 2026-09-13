@@ -1,8 +1,21 @@
 import React, { useState } from 'react';
-import { Lock, Mail, User, AlertCircle, CheckCircle2, X, Shield, ArrowRight, Sparkles, Globe } from 'lucide-react';
+import { 
+  Lock, 
+  Mail, 
+  User, 
+  AlertCircle, 
+  CheckCircle2, 
+  X, 
+  Shield, 
+  ArrowRight, 
+  Sparkles, 
+  ExternalLink,
+  Zap,
+  Info
+} from 'lucide-react';
 import { loginWithEmailPassword, registerWithEmailPassword, CORPORATE_DOMAIN } from '../../services/authService';
 import { useApp } from '../../context/AppContext';
-import type { UserProfile, UserType } from '../../types';
+import type { UserProfile } from '../../types';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -11,16 +24,16 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { loginWithGoogleAuth, users } = useApp();
+  const { loginWithGoogleAuth, users, loginAsUser } = useApp();
 
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
-  const [accountType, setAccountType] = useState<UserType>('INTERNAL');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showDemoSelector, setShowDemoSelector] = useState(false);
 
   if (!isOpen) return null;
 
@@ -36,10 +49,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           onClose();
         }, 800);
       } else {
-        setErrorMsg(res.error || 'Erro ao autenticar com o Google.');
+        let msg = res.error || 'Erro ao autenticar com o Google.';
+        if (msg.includes('operation-not-allowed')) {
+          msg = 'O provedor de login Google precisa ser ativado no Firebase Console (Authentication > Sign-in method > Google).';
+        }
+        setErrorMsg(msg);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Erro ao conectar com o Google.');
+      console.error('Google Auth Error:', err);
+      let msg = err.message || 'Erro ao conectar com o Google.';
+      if (err.code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
+        msg = 'O provedor Google está desativado no Firebase Console. Ative o método de login Google em Authentication > Sign-in method.';
+      }
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -49,19 +71,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Bloqueia tentativa de criar conta para colaborador interno:
+    // Apenas clientes criam conta!
+    if (mode === 'REGISTER' && cleanEmail.endsWith(CORPORATE_DOMAIN)) {
+      setErrorMsg(
+        `Colaboradores internos (${CORPORATE_DOMAIN}) não criam conta. Acesse pelo botão "Continuar com o Google" ou use a aba "Entrar".`
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
       if (mode === 'LOGIN') {
-        const { user } = await loginWithEmailPassword(email, password);
+        const { user } = await loginWithEmailPassword(cleanEmail, password);
         setSuccessMsg(`Bem-vindo de volta, ${user.displayName}!`);
         setTimeout(() => {
           onSuccess(user);
           onClose();
         }, 1000);
       } else {
-        const { user } = await registerWithEmailPassword(email, password, displayName, accountType);
-        setSuccessMsg(`Conta criada com sucesso! Acesso: ${user.userType === 'INTERNAL' ? 'Interno' : 'Externo'}.`);
+        // Modo Cadastro: estritamente para Clientes / Usuários Externos
+        const { user } = await registerWithEmailPassword(cleanEmail, password, displayName, 'EXTERNAL');
+        setSuccessMsg(`Conta de cliente criada com sucesso! Bem-vindo, ${user.displayName}.`);
         setTimeout(() => {
           onSuccess(user);
           onClose();
@@ -69,18 +104,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       }
     } catch (err: any) {
       console.error('Erro de autenticação:', err);
-      let msg = err.message || 'Ocorreu um erro ao processar a autenticação.';
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      let msg = 'Ocorreu um erro ao processar a autenticação.';
+
+      if (err.code === 'auth/operation-not-allowed' || err.message?.includes('operation-not-allowed')) {
+        msg = 'O provedor de autenticação (E-mail/Senha) precisa ser ativado no Console da Nuvem (Authentication > Sign-in method > E-mail/senha). Você também pode utilizar o "Acesso Rápido de Teste" abaixo.';
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         msg = 'E-mail ou senha incorretos. Verifique suas credenciais.';
       } else if (err.code === 'auth/email-already-in-use') {
         msg = 'Este e-mail já está cadastrado. Alterne para a opção "Entrar".';
       } else if (err.code === 'auth/weak-password') {
         msg = 'A senha deve conter no mínimo 6 caracteres.';
+      } else if (err.message) {
+        msg = err.message.replace(/Firebase:\s*/gi, '').replace(/\(auth\/[^)]+\)/gi, '');
       }
+
       setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleQuickDemoLogin = (userToLogin: UserProfile) => {
+    loginAsUser(userToLogin);
+    onSuccess(userToLogin);
+    onClose();
   };
 
   return (
@@ -162,7 +209,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             </div>
             <div>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                {mode === 'LOGIN' ? 'Acessar a Plataforma' : 'Criar Nova Conta'}
+                {mode === 'LOGIN' ? 'Acessar a Plataforma' : 'Criar Conta de Cliente'}
               </h2>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: 0 }}>
                 Conciliador Contábil • Base de Conhecimento
@@ -236,7 +283,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
           </div>
 
-          {/* Mode Switcher (Login vs Register) */}
+          {/* Mode Switcher (Login vs Criar Conta de Cliente) */}
           <div 
             style={{ 
               display: 'flex', 
@@ -263,7 +310,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 transition: 'all 0.15s ease',
               }}
             >
-              Entrar (Login)
+              Entrar (Colaborador / Cliente)
             </button>
             <button
               type="button"
@@ -274,61 +321,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 fontSize: '0.8rem',
                 fontWeight: mode === 'REGISTER' ? 700 : 500,
                 borderRadius: 'var(--radius-sm)',
-                background: mode === 'REGISTER' ? 'var(--color-primary)' : 'transparent',
-                color: mode === 'REGISTER' ? '#1a1d20' : 'var(--text-muted)',
+                background: mode === 'REGISTER' ? '#38bdf8' : 'transparent',
+                color: mode === 'REGISTER' ? '#0f172a' : 'var(--text-muted)',
                 border: 'none',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
             >
-              Criar Conta
+              Criar Conta (Cliente)
             </button>
           </div>
 
-          {/* Account Type Selector (se estiver registrando) */}
-          {mode === 'REGISTER' && (
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-subtle)', marginBottom: '6px' }}>
-                Tipo de Acesso:
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setAccountType('INTERNAL')}
-                  style={{
-                    padding: '8px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: accountType === 'INTERNAL' ? 'rgba(92, 183, 128, 0.15)' : 'var(--bg-input)',
-                    border: `1px solid ${accountType === 'INTERNAL' ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-                    color: accountType === 'INTERNAL' ? 'var(--color-primary)' : 'var(--text-muted)',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Colaborador Interno
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAccountType('EXTERNAL')}
-                  style={{
-                    padding: '8px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: accountType === 'EXTERNAL' ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-input)',
-                    border: `1px solid ${accountType === 'EXTERNAL' ? '#38bdf8' : 'var(--border-subtle)'}`,
-                    color: accountType === 'EXTERNAL' ? '#38bdf8' : 'var(--text-muted)',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cliente Externo
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Policy Banner */}
+          {/* Policy Banner: Informativo explicativo */}
           <div 
             style={{
               marginBottom: '16px',
@@ -346,7 +350,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           >
             <Sparkles size={14} color="var(--color-primary)" style={{ flexShrink: 0, marginTop: '2px' }} />
             <span>
-              E-mails <strong>{CORPORATE_DOMAIN}</strong> têm acesso completo à área interna. Usuários com outros domínios acessam o Portal do Cliente.
+              {mode === 'LOGIN' ? (
+                <>
+                  Colaboradores com <strong>{CORPORATE_DOMAIN}</strong> acessam o Portal Interno. Clientes acessam o Portal Público.
+                </>
+              ) : (
+                <>
+                  A criação de conta é <strong>exclusiva para clientes</strong>. Colaboradores internos utilizam o botão <em>"Continuar com o Google"</em>.
+                </>
+              )}
             </span>
           </div>
 
@@ -355,19 +367,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <div 
               style={{
                 marginBottom: '14px',
-                padding: '10px 12px',
+                padding: '12px',
                 borderRadius: 'var(--radius-md)',
                 background: 'rgba(239, 68, 68, 0.12)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
                 color: '#ef4444',
                 fontSize: '0.78rem',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: '8px',
+                lineHeight: 1.45,
               }}
             >
-              <AlertCircle size={15} />
-              <span>{errorMsg}</span>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <div>
+                <span>{errorMsg}</span>
+                {errorMsg.includes('Sign-in method') && (
+                  <div style={{ marginTop: '8px' }}>
+                    <a
+                      href="https://console.firebase.google.com/project/base-de-conhecimento-cc/authentication/providers"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#38bdf8',
+                        fontWeight: 700,
+                        textDecoration: 'underline',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <span>Abrir Painel de Autenticação do Console</span>
+                      <ExternalLink size={12} />
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -396,7 +431,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             {mode === 'REGISTER' && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
-                  Nome Completo
+                  Seu Nome ou Nome do Escritório / Empresa
                 </label>
                 <div style={{ position: 'relative' }}>
                   <User size={15} color="var(--text-subtle)" style={{ position: 'absolute', left: '10px', top: '11px' }} />
@@ -405,7 +440,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     required
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Ex: Natasha Lorrane ou Rodrigo Moro"
+                    placeholder="Ex: Escritório Contábil Alfa"
                     style={{
                       width: '100%',
                       padding: '9px 12px 9px 34px',
@@ -423,7 +458,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
-                {accountType === 'INTERNAL' && mode === 'REGISTER' ? 'E-mail Corporativo' : 'E-mail'}
+                {mode === 'REGISTER' ? 'E-mail do Cliente (Qualquer domínio)' : 'E-mail'}
               </label>
               <div style={{ position: 'relative' }}>
                 <Mail size={15} color="var(--text-subtle)" style={{ position: 'absolute', left: '10px', top: '11px' }} />
@@ -433,9 +468,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={
-                    accountType === 'INTERNAL'
-                      ? 'usuario@conciliadorcontabil.com.br'
-                      : 'cliente@escritorio.com.br'
+                    mode === 'REGISTER'
+                      ? 'cliente@seu-escritorio.com.br'
+                      : 'usuario@conciliadorcontabil.com.br'
                   }
                   style={{
                     width: '100%',
@@ -485,7 +520,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 marginTop: '6px',
                 padding: '11px',
                 borderRadius: 'var(--radius-md)',
-                background: 'var(--color-primary)',
+                background: mode === 'LOGIN' ? 'var(--color-primary)' : '#38bdf8',
                 color: '#1a1d20',
                 fontWeight: 800,
                 fontSize: '0.88rem',
@@ -495,19 +530,124 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                boxShadow: '0 2px 8px rgba(92, 183, 128, 0.25)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
               }}
             >
               {loading ? (
                 <span>Processando...</span>
               ) : (
                 <>
-                  <span>{mode === 'LOGIN' ? 'Entrar com E-mail' : 'Concluir Cadastro'}</span>
+                  <span>{mode === 'LOGIN' ? 'Entrar com E-mail' : 'Criar Conta de Cliente'}</span>
                   <ArrowRight size={15} />
                 </>
               )}
             </button>
           </form>
+
+          {/* Atalho de Teste / Homologação Rápida */}
+          <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
+            <button
+              type="button"
+              onClick={() => setShowDemoSelector(!showDemoSelector)}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-subtle)',
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              <Zap size={13} color="#f59e0b" />
+              <span>{showDemoSelector ? 'Ocultar Acesso Rápido de Teste' : 'Atalho Rápido de Teste (Colaboradores)'}</span>
+            </button>
+
+            {showDemoSelector && (
+              <div 
+                style={{ 
+                  marginTop: '10px', 
+                  padding: '10px', 
+                  background: 'var(--bg-card)', 
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-subtle)',
+                  maxHeight: '180px',
+                  overflowY: 'auto',
+                }}
+              >
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-subtle)', marginBottom: '6px' }}>
+                  Selecione um usuário para simulação imediata:
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {users.map((u) => (
+                    <button
+                      key={u.uid}
+                      type="button"
+                      onClick={() => handleQuickDemoLogin(u)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-main)',
+                        fontSize: '0.74rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+                    >
+                      <span style={{ fontWeight: 600 }}>{u.displayName}</span>
+                      <span 
+                        style={{ 
+                          fontSize: '0.65rem', 
+                          padding: '1px 5px', 
+                          borderRadius: '3px',
+                          background:
+                            u.role === 'SUPER_ADMIN'
+                              ? 'rgba(245, 158, 11, 0.2)'
+                              : u.role === 'ADMIN'
+                              ? 'rgba(92, 183, 128, 0.2)'
+                              : u.role === 'REVIEWER'
+                              ? 'rgba(108, 99, 255, 0.2)'
+                              : u.role === 'READER'
+                              ? 'rgba(56, 189, 248, 0.2)'
+                              : 'rgba(255, 255, 255, 0.1)',
+                          color:
+                            u.role === 'SUPER_ADMIN'
+                              ? '#f59e0b'
+                              : u.role === 'ADMIN'
+                              ? '#5cb780'
+                              : u.role === 'REVIEWER'
+                              ? '#6c63ff'
+                              : u.role === 'READER'
+                              ? '#38bdf8'
+                              : 'var(--text-main)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {u.role === 'SUPER_ADMIN'
+                          ? 'Super Admin'
+                          : u.role === 'ADMIN'
+                          ? 'Admin'
+                          : u.role === 'REVIEWER'
+                          ? 'Revisor'
+                          : u.role === 'READER' || u.userType === 'EXTERNAL'
+                          ? 'Cliente'
+                          : 'Operador'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

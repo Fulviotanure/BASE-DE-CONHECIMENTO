@@ -17,7 +17,7 @@ export const MyArticlesView: React.FC<MyArticlesViewProps> = ({
   const { articles, currentUser } = useApp();
 
   const myArticles = articles.filter(
-    (a) => a.authorEmail.toLowerCase() === currentUser.email.toLowerCase()
+    (a) => currentUser && a.authorEmail.toLowerCase() === currentUser.email.toLowerCase()
   );
 
   const pendingList = myArticles.filter((a) => a.currentStatus === 'PENDING');
@@ -181,7 +181,22 @@ export const MyArticlesView: React.FC<MyArticlesViewProps> = ({
                 }}
               >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(92, 183, 128, 0.15)',
+                        color: 'var(--color-primary)',
+                        border: '1px solid rgba(92, 183, 128, 0.3)',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {art.code || 'CC-DOC'}
+                    </span>
                     <span
                       className={
                         art.currentStatus === 'APPROVED'

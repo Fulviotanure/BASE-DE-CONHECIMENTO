@@ -14,9 +14,11 @@ interface HeaderProps {
   setActiveView: (view: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ setActiveView }) => {
+export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => {
   const {
     currentUser,
+    isPermanentSuperAdmin,
+    switchRolePreview,
     theme,
     toggleTheme,
     setIsSearchOpen,
@@ -24,7 +26,9 @@ export const Header: React.FC<HeaderProps> = ({ setActiveView }) => {
     setIsProfileModalOpen,
   } = useApp();
 
-  const isInternal = currentUser?.userType === 'INTERNAL' || currentUser?.email.includes('conciliadorcontabil.com.br');
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
+  const isInternal = !isExternal && (currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email?.includes('conciliadorcontabil.com.br')));
+  const isSuperAdmin = isPermanentSuperAdmin || Boolean(currentUser?.email?.toLowerCase().includes('fulvio')) || currentUser?.role === 'SUPER_ADMIN';
 
   return (
     <header
@@ -81,54 +85,99 @@ export const Header: React.FC<HeaderProps> = ({ setActiveView }) => {
         </div>
       </div>
 
-      {/* Global Search Bar trigger */}
-      <div style={{ flex: 1, maxWidth: '440px', margin: '0 24px' }}>
-        <button
-          type="button"
-          onClick={() => setIsSearchOpen(true)}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '8px 14px',
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--text-muted)',
-            fontSize: '0.85rem',
-            transition: 'all 0.2s ease',
-            cursor: 'pointer',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'var(--color-primary)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'var(--border-subtle)';
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Search size={16} color="var(--color-primary)" />
-            <span>Buscar manuais, regras, layouts, erros...</span>
-          </div>
-          <kbd
+      {/* Global Search Bar trigger - Oculto na Landing Page ou quando Deslogado */}
+      {currentUser && activeView !== 'landing' ? (
+        <div style={{ flex: 1, maxWidth: '440px', margin: '0 24px' }}>
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
             style={{
-              background: 'var(--bg-card)',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 14px',
+              background: 'var(--bg-input)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '4px',
-              padding: '2px 6px',
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              color: 'var(--text-subtle)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-muted)',
+              fontSize: '0.85rem',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--color-primary)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-subtle)';
             }}
           >
-            Ctrl + K
-          </kbd>
-        </button>
-      </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Search size={16} color="var(--color-primary)" />
+              <span>Buscar manuais, regras, layouts, erros...</span>
+            </div>
+            <kbd
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '4px',
+                padding: '2px 6px',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                color: 'var(--text-subtle)',
+              }}
+            >
+              Ctrl + K
+            </kbd>
+          </button>
+        </div>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
 
       {/* Actions & User State */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Super Admin Persistent Role Switcher - NUNCA SOME PARA O FULVIO */}
+        {isSuperAdmin && currentUser && (
+          <div
+            title="Simulador de Papel do Super Administrador (Fixo)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(92, 183, 128, 0.12)',
+              border: '1px solid rgba(92, 183, 128, 0.35)',
+            }}
+          >
+            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-primary)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+              👑 Visão:
+            </span>
+            <select
+              value={currentUser.role}
+              onChange={(e) => switchRolePreview(e.target.value as any)}
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-main)',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                padding: '3px 6px',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="SUPER_ADMIN">👑 Super Admin</option>
+              <option value="ADMIN">🛡️ Administrador</option>
+              <option value="REVIEWER">✍️ Revisor / Editor</option>
+              <option value="OPERATOR">👷 Operador</option>
+              <option value="READER">👤 Leitor (Cliente)</option>
+            </select>
+          </div>
+        )}
+
         {/* Theme Toggle */}
         <button
           type="button"
@@ -149,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({ setActiveView }) => {
           {theme === 'dark' ? <Sun size={17} color="#f59e0b" /> : <Moon size={17} color="#6c63ff" />}
         </button>
 
-        {/* User State: If logged in, show Profile Trigger; If NOT logged in, show "Entrar" button */}
+        {/* User State */}
         {currentUser ? (
           <button
             type="button"
@@ -210,13 +259,15 @@ export const Header: React.FC<HeaderProps> = ({ setActiveView }) => {
                 {currentUser.displayName}
               </span>
               <span style={{ fontSize: '0.68rem', color: isInternal ? 'var(--color-primary)' : '#38bdf8', fontWeight: 700 }}>
-                {currentUser.role === 'ADMIN'
-                  ? '👑 Administrador'
+                {currentUser.role === 'SUPER_ADMIN'
+                  ? '👑 Super Admin'
+                  : currentUser.role === 'ADMIN'
+                  ? '🛡️ Administrador'
                   : currentUser.role === 'REVIEWER'
                   ? '✍️ Revisor'
                   : isInternal
                   ? '👷 Operador'
-                  : '👤 Cliente'}
+                  : '👤 Leitor / Cliente'}
               </span>
             </div>
 

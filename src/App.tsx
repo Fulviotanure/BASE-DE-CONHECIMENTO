@@ -25,7 +25,8 @@ const MainApp: React.FC = () => {
     setCurrentUser 
   } = useApp();
 
-  const isInternal = currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email.includes('conciliadorcontabil.com.br'));
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
+  const isInternal = !isExternal && (currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email?.includes('conciliadorcontabil.com.br')));
 
   // Define a view inicial: se não houver usuário, vai para landing page de apresentação
   const [activeView, setActiveView] = useState<string>(() => {
@@ -34,8 +35,9 @@ const MainApp: React.FC = () => {
   });
 
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const [isProposalMode, setIsProposalMode] = useState(false);
 
-  // Sincroniza a visão ativa quando o usuário faz login ou logout
+  // Sincroniza a visão ativa quando o usuário faz login ou logout ou muda papel de simulação
   useEffect(() => {
     if (!currentUser) {
       if (activeView !== 'external-portal' && activeView !== 'tools') {
@@ -48,15 +50,23 @@ const MainApp: React.FC = () => {
         setActiveView('external-portal');
       }
     }
-  }, [currentUser]);
+  }, [currentUser, isInternal]);
 
   const handleOpenNewArticle = () => {
     setEditingArticle(null);
+    setIsProposalMode(false);
     setActiveView('editor');
   };
 
   const handleEditArticle = (art: Article) => {
     setEditingArticle(art);
+    setIsProposalMode(false);
+    setActiveView('editor');
+  };
+
+  const handleProposeArticleEdit = (art: Article) => {
+    setEditingArticle(art);
+    setIsProposalMode(true);
     setActiveView('editor');
   };
 
@@ -105,7 +115,12 @@ const MainApp: React.FC = () => {
           )}
 
           {/* Visões Internas (Colaboradores) */}
-          {activeView === 'kb' && <KnowledgeBaseView onOpenNewArticle={handleOpenNewArticle} />}
+          {activeView === 'kb' && (
+            <KnowledgeBaseView 
+              onOpenNewArticle={handleOpenNewArticle} 
+              onProposeEdit={handleProposeArticleEdit}
+            />
+          )}
           {activeView === 'my-articles' && (
             <MyArticlesView
               onOpenNewArticle={handleOpenNewArticle}
@@ -120,7 +135,8 @@ const MainApp: React.FC = () => {
           {activeView === 'editor' && (
             <ArticleEditorView
               editingArticle={editingArticle}
-              onClose={() => setActiveView('my-articles')}
+              isProposalMode={isProposalMode}
+              onClose={() => setActiveView(isInternal ? 'kb' : 'my-articles')}
             />
           )}
         </main>

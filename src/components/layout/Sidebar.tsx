@@ -23,9 +23,10 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onOpenNewArticle }) => {
   const { currentUser, articles, setIsAuthModalOpen } = useApp();
 
-  const isInternal = currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email.includes('conciliadorcontabil.com.br'));
-  const canReview = isInternal && (currentUser?.role === 'ADMIN' || currentUser?.role === 'REVIEWER');
-  const isAdmin = isInternal && currentUser?.role === 'ADMIN';
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
+  const isInternal = !isExternal && (currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email?.includes('conciliadorcontabil.com.br')));
+  const canReview = isInternal && (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.role === 'REVIEWER');
+  const isAdmin = isInternal && (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN');
 
   const pendingCount = articles.filter((a) => a.currentStatus === 'PENDING').length;
   const myAdjustmentsCount = articles.filter(

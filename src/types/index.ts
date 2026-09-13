@@ -1,4 +1,4 @@
-export type UserRole = 'OPERATOR' | 'REVIEWER' | 'ADMIN';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'REVIEWER' | 'OPERATOR' | 'READER';
 
 export type UserType = 'INTERNAL' | 'EXTERNAL';
 
@@ -49,6 +49,7 @@ export interface ArticleReview {
 
 export interface Article {
   id: string;
+  code: string; // Código único de identificação rápida (ex: "CC-101")
   title: string;
   slug: string;
   categoryId: string;
@@ -59,6 +60,9 @@ export interface Article {
   currentStatus: ArticleStatus;
   tags: string[];
   viewCount: number;
+  likesCount?: number;
+  dislikesCount?: number;
+  proposalNote?: string;
   contentHtml: string;
   reviews?: ArticleReview[];
   publishedAt?: string;

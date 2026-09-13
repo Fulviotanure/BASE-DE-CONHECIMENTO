@@ -22,19 +22,23 @@ export const UserProfileModal: React.FC = () => {
     setIsProfileModalOpen, 
     logout, 
     switchRolePreview,
+    isPermanentSuperAdmin,
     users
   } = useApp();
 
   if (!isProfileModalOpen || !currentUser) return null;
 
-  const isInternal = currentUser.userType === 'INTERNAL' || currentUser.email.includes('conciliadorcontabil.com.br');
-  const isAdmin = currentUser.role === 'ADMIN';
+  const isExternal = currentUser.role === 'READER' || currentUser.userType === 'EXTERNAL';
+  const isInternal = !isExternal && (currentUser.userType === 'INTERNAL' || currentUser.email.includes('conciliadorcontabil.com.br'));
+  const canSimulate = isPermanentSuperAdmin || Boolean(currentUser.email.toLowerCase().includes('fulvio')) || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN';
 
   const roleLabel = {
-    ADMIN: '👑 Superadministrador / Admin',
+    SUPER_ADMIN: '👑 Super Administrador (Fixo)',
+    ADMIN: '🛡️ Administrador',
     REVIEWER: '✍️ Editor & Revisor',
-    OPERATOR: isInternal ? '👷 Operador Interno' : '👤 Cliente / Usuário Externo',
-  }[currentUser.role];
+    OPERATOR: '👷 Operador Interno',
+    READER: '👤 Leitor (Cliente Externo)',
+  }[currentUser.role] || currentUser.role;
 
   const handleRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     switchRolePreview(e.target.value as UserRole);
@@ -262,26 +266,26 @@ export const UserProfileModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Simulator for Admin */}
-          {isAdmin && (
+          {/* Simulator for Admin / Super Admin (Nunca Some) */}
+          {canSimulate && (
             <div
               style={{
                 marginBottom: '20px',
                 padding: '12px 14px',
-                background: 'rgba(108, 99, 255, 0.08)',
-                border: '1px solid rgba(108, 99, 255, 0.25)',
+                background: 'rgba(92, 183, 128, 0.08)',
+                border: '1px solid rgba(92, 183, 128, 0.28)',
                 borderRadius: 'var(--radius-md)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <SlidersHorizontal size={14} color="#6c63ff" />
+                  <SlidersHorizontal size={14} color="var(--color-primary)" />
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                    Simulador de Permissão (Admin)
+                    Simulador de Permissão (Super Admin Fixo)
                   </span>
                 </div>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
-                  Testar visão de equipe
+                <span style={{ fontSize: '0.68rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+                  Controle Permanente
                 </span>
               </div>
 
@@ -298,11 +302,14 @@ export const UserProfileModal: React.FC = () => {
                   color: 'var(--text-main)',
                   fontWeight: 600,
                   outline: 'none',
+                  cursor: 'pointer',
                 }}
               >
-                <option value="ADMIN">👑 Administrador (Acesso Total)</option>
-                <option value="REVIEWER">✍️ Editor & Revisor (Fila Editorial)</option>
-                <option value="OPERATOR">👷 Operador Comum (Leitura e Redação)</option>
+                <option value="SUPER_ADMIN">👑 Super Administrador (Acesso Irrestrito)</option>
+                <option value="ADMIN">🛡️ Administrador (Gestão de Usuários & Equipe)</option>
+                <option value="REVIEWER">✍️ Revisor / Editor (Fila Editorial)</option>
+                <option value="OPERATOR">👷 Operador Interno (Leitura e Redação)</option>
+                <option value="READER">👤 Leitor / Usuário (Cliente Externo)</option>
               </select>
             </div>
           )}

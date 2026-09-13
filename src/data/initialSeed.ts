@@ -94,16 +94,18 @@ export const INITIAL_CATEGORIES: Category[] = [
 ];
 
 export const INITIAL_USERS: UserProfile[] = [
+  // Super Administrador Fixo
   {
     uid: 'usr-fulvio',
     email: 'fulvio@conciliadorcontabil.com.br',
     displayName: 'Fulvio Tanure (Superadmin)',
-    role: 'ADMIN',
+    role: 'SUPER_ADMIN',
     userType: 'INTERNAL',
     status: 'ACTIVE',
     createdAt: '2026-01-10T08:00:00Z',
     lastLoginAt: '2026-09-13T12:45:00Z',
   },
+  // Administradores
   {
     uid: 'usr-rodrigo-moro',
     email: 'rodrigo@conciliadorcontabil.com.br',
@@ -143,6 +145,147 @@ export const INITIAL_USERS: UserProfile[] = [
     status: 'ACTIVE',
     createdAt: '2026-01-18T10:00:00Z',
     lastLoginAt: '2026-09-13T14:00:00Z',
+  },
+  // Colaboradores Internos (Operadores)
+  {
+    uid: 'usr-agatha',
+    email: 'agatha@conciliadorcontabil.com.br',
+    displayName: 'Agatha Macedo',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-01T08:00:00Z',
+    lastLoginAt: '2026-09-13T10:00:00Z',
+  },
+  {
+    uid: 'usr-aline',
+    email: 'alinenunes@conciliadorcontabil.com.br',
+    displayName: 'Aline Nunes',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-01T08:30:00Z',
+    lastLoginAt: '2026-09-13T11:20:00Z',
+  },
+  {
+    uid: 'usr-anaclaudia',
+    email: 'anaclaudia@conciliadorcontabil.com.br',
+    displayName: 'Ana Claudia',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-02T09:00:00Z',
+    lastLoginAt: '2026-09-13T09:40:00Z',
+  },
+  {
+    uid: 'usr-ana-julia',
+    email: 'ana@conciliadorcontabil.com.br',
+    displayName: 'Ana Júlia',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-03T09:15:00Z',
+    lastLoginAt: '2026-09-13T13:00:00Z',
+  },
+  {
+    uid: 'usr-andre',
+    email: 'andre@conciliadorcontabil.com.br',
+    displayName: 'André Marcos',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-04T10:00:00Z',
+    lastLoginAt: '2026-09-12T17:00:00Z',
+  },
+  {
+    uid: 'usr-andressa',
+    email: 'andressa@conciliadorcontabil.com.br',
+    displayName: 'Andressa Mendes',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-05T10:30:00Z',
+    lastLoginAt: '2026-09-13T14:15:00Z',
+  },
+  {
+    uid: 'usr-artur',
+    email: 'artur@conciliadorcontabil.com.br',
+    displayName: 'Artur Henrique',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-06T11:00:00Z',
+    lastLoginAt: '2026-09-13T12:30:00Z',
+  },
+  {
+    uid: 'usr-bruno',
+    email: 'bruno@conciliadorcontabil.com.br',
+    displayName: 'Bruno Damião',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-07T11:30:00Z',
+    lastLoginAt: '2026-09-13T08:50:00Z',
+  },
+  {
+    uid: 'usr-carina',
+    email: 'carina@conciliadorcontabil.com.br',
+    displayName: 'Carina Amarall',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-08T13:00:00Z',
+    lastLoginAt: '2026-09-12T18:00:00Z',
+  },
+  {
+    uid: 'usr-douglas',
+    email: 'douglas@conciliadorcontabil.com.br',
+    displayName: 'Douglas Montovani',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-09T14:00:00Z',
+    lastLoginAt: '2026-09-13T10:45:00Z',
+  },
+  {
+    uid: 'usr-elisandra',
+    email: 'financeiro@conciliadorcontabil.com.br',
+    displayName: 'Elisandra | Financeiro',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-10T08:30:00Z',
+    lastLoginAt: '2026-09-13T14:30:00Z',
+  },
+  {
+    uid: 'usr-fabricio',
+    email: 'fabricio@conciliadorcontabil.com.br',
+    displayName: 'Fabricio Tamada',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-11T09:00:00Z',
+    lastLoginAt: '2026-09-13T11:15:00Z',
+  },
+  {
+    uid: 'usr-humberto',
+    email: 'humberto@conciliadorcontabil.com.br',
+    displayName: 'Humberto Dante',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-12T10:00:00Z',
+    lastLoginAt: '2026-09-13T13:40:00Z',
+  },
+  {
+    uid: 'usr-iago',
+    email: 'iago@conciliadorcontabil.com.br',
+    displayName: 'Iago Henrique',
+    role: 'OPERATOR',
+    userType: 'INTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-02-13T10:30:00Z',
+    lastLoginAt: '2026-09-13T12:10:00Z',
   },
   {
     uid: 'usr-natasha',
@@ -274,11 +417,12 @@ export const INITIAL_USERS: UserProfile[] = [
     createdAt: '2026-03-22T11:00:00Z',
     lastLoginAt: '2026-09-13T13:25:00Z',
   },
+  // Cliente Externo
   {
     uid: 'usr-externo-demo',
     email: 'cliente@escritorioexemplo.com.br',
     displayName: 'Cliente Externo Demo',
-    role: 'OPERATOR',
+    role: 'READER',
     userType: 'EXTERNAL',
     status: 'ACTIVE',
     createdAt: '2026-04-01T09:00:00Z',
@@ -287,18 +431,99 @@ export const INITIAL_USERS: UserProfile[] = [
 ];
 
 export const INITIAL_ARTICLES: Article[] = [
+  // Artigo 1 (Aprovado em Primeiros Passos criado por Fulvio Tanure)
+  {
+    id: 'art-cc-101',
+    code: 'CC-101',
+    title: 'Guia Oficial de Primeiros Passos: Operação, Implantação e Boas Práticas',
+    slug: 'guia-oficial-primeiros-passos-operacao-implantacao',
+    categoryId: 'cat-1',
+    categoryName: 'Primeiros Passos',
+    authorId: 'usr-fulvio',
+    authorName: 'Fulvio Tanure',
+    authorEmail: 'fulvio@conciliadorcontabil.com.br',
+    currentStatus: 'APPROVED',
+    accessLevel: 'ALL',
+    tags: ['Primeiros Passos', 'Implantação', 'Manual Oficial', 'Boas Práticas', 'Extratos'],
+    viewCount: 168,
+    likesCount: 42,
+    dislikesCount: 0,
+    contentHtml: `
+      <h2>1. Introdução à Plataforma Conciliador Contábil</h2>
+      <p>Bem-vindo ao <strong>Conciliador Contábil</strong>! Esta solução foi desenvolvida para acelerar a rotina de fechamento contábil e financeiro dos escritórios e departamentos contábeis, eliminando 100% da digitação manual de extratos bancários e cartões.</p>
+      
+      <div class="callout callout-info">
+        <strong>💡 Conceito Chave:</strong> O sistema trabalha com <strong>Confronto Inteligente</strong>: compara o que ocorreu na conta bancária (débitos e créditos) com os lançamentos do razão contábil ou financeiro, propondo a conciliação automática.
+      </div>
+
+      <h2>2. Etapas de Implantação Rápida</h2>
+      <ol style="margin-left: 20px; line-height: 1.8;">
+        <li><strong>Configuração de Empresas e Contas:</strong> Cadastre o plano de contas contábil e vincule o banco com a sua conta contábil correspondente (Ativo Circulante).</li>
+        <li><strong>Importação do Extrato Oficial:</strong> Solicite ao cliente o arquivo bancário em formato <strong>.OFX</strong> ou <strong>PDF com texto</strong>.</li>
+        <li><strong>Aplicação de Regras Contábeis:</strong> Crie regras para identificar lançamentos recorrentes (tarifas, impostos, fornecedores frequentes).</li>
+        <li><strong>Confronto e Baixa:</strong> Execute a conciliação e visualize as pendências eliminadas em tempo real.</li>
+        <li><strong>Exportação do Lote Contábil:</strong> Exporte para o seu software contábil (Domínio, Fortes, Questor, Alterdata, etc.).</li>
+      </ol>
+
+      <div class="callout callout-success">
+        <strong>✅ Boas Práticas Recomendadas:</strong> Sempre priorize extratos em formato <strong>OFX</strong> para garantir a leitura do código FITID único de cada transação bancária.
+      </div>
+    `,
+    publishedAt: '2026-09-13T09:30:00Z',
+    createdAt: '2026-09-13T09:00:00Z',
+    updatedAt: '2026-09-13T09:30:00Z',
+  },
+  // Artigo 2 (Em Revisão / PENDING em Primeiros Passos criado por Fulvio Tanure)
+  {
+    id: 'art-cc-102',
+    code: 'CC-102',
+    title: 'Procedimento Operacional: Diagnóstico de Diferenças e Conciliação de Contas Transitórias',
+    slug: 'diagnostico-diferencas-contas-transitorias',
+    categoryId: 'cat-1',
+    categoryName: 'Primeiros Passos',
+    authorId: 'usr-fulvio',
+    authorName: 'Fulvio Tanure',
+    authorEmail: 'fulvio@conciliadorcontabil.com.br',
+    currentStatus: 'PENDING',
+    accessLevel: 'INTERNAL',
+    proposalNote: 'Elaboração de novo procedimento padrão para operadores reduzirem o tempo de localização de divergências de extratos bancários com partidas dobradas.',
+    tags: ['Primeiros Passos', 'Transitórias', 'Diferenças', 'Procedimento', 'Revisão'],
+    viewCount: 24,
+    likesCount: 5,
+    dislikesCount: 0,
+    contentHtml: `
+      <h2>1. Objetivo deste Procedimento</h2>
+      <p>Estabelecer o protocolo de auditoria interna quando o operador identifica saldos residuais em contas transitórias de conciliação bancária após a execução dos confrontos automáticos.</p>
+
+      <h2>2. Procedimento de Investigação Passo a Passo</h2>
+      <ol style="margin-left: 20px; line-height: 1.8;">
+        <li><strong>Verificação de Datas de Compensação:</strong> Checar se o cheque ou TED emitido no final do mês compensou no extrato do mês subsequente (D+1 ou D+2).</li>
+        <li><strong>Lançamentos em Duplicidade:</strong> Utilizar o filtro por valor exato no painel de confronto para identificar duplicidades originadas por reenvio de arquivos.</li>
+        <li><strong>Estornos e Tarifas Agrupadas:</strong> Separar transações bancárias onde tarifas foram cobradas líquidas ou estornadas no mesmo lote.</li>
+      </ol>
+
+      <div class="callout callout-warning">
+        <strong>⚠️ Nota do Autor:</strong> Este procedimento aguarda revisão editorial pela equipe de governança para publicação oficial na base interna.
+      </div>
+    `,
+    createdAt: '2026-09-13T14:40:00Z',
+    updatedAt: '2026-09-13T14:40:00Z',
+  },
   {
     id: 'art-1',
+    code: 'CC-103',
     title: 'Como Importar Extratos Bancários (OFX, PDF, Excel e TXT)',
     slug: 'como-importar-extratos-bancarios',
     categoryId: 'cat-3',
     categoryName: 'Importação',
     authorId: 'usr-fulvio',
-    authorName: 'Fulvio',
+    authorName: 'Fulvio Tanure',
     authorEmail: 'fulvio@conciliadorcontabil.com.br',
     currentStatus: 'APPROVED',
     tags: ['OFX', 'PDF', 'Importação', 'Extrato'],
     viewCount: 342,
+    likesCount: 28,
+    dislikesCount: 1,
     contentHtml: `
       <h2>1. Visão Geral da Importação</h2>
       <p>O <strong>Conciliador Contábil</strong> aceita arquivos diretamente no formato disponibilizado pelo banco do cliente, eliminando a necessidade de redigitar linhas ou formatar planilhas manualmente.</p>
@@ -326,6 +551,7 @@ export const INITIAL_ARTICLES: Article[] = [
   },
   {
     id: 'art-2',
+    code: 'CC-104',
     title: 'Criação de Regras Contábeis Automatizadas com Histórico Padrão',
     slug: 'regras-contabeis-automatizadas',
     categoryId: 'cat-4',
@@ -337,6 +563,8 @@ export const INITIAL_ARTICLES: Article[] = [
     accessLevel: 'ALL',
     tags: ['Regras', 'Contabilidade', 'Automação', 'Histórico'],
     viewCount: 289,
+    likesCount: 19,
+    dislikesCount: 0,
     contentHtml: `
       <h2>Eliminando Contas Transitórias</h2>
       <p>As regras contábeis identificam padrões descritivos no extrato (como <em>SISPAG</em>, <em>TED</em>, <em>PIX RECEBIDO</em>) e já direcionam a partida e contrapartida correspondentes.</p>
@@ -351,6 +579,7 @@ export const INITIAL_ARTICLES: Article[] = [
   },
   {
     id: 'art-3',
+    code: 'CC-105',
     title: 'Open Finance: Conexão Direta e Busca Automática de Extratos',
     slug: 'open-finance-busca-automatica',
     categoryId: 'cat-7',
@@ -362,6 +591,8 @@ export const INITIAL_ARTICLES: Article[] = [
     accessLevel: 'ALL',
     tags: ['Open Finance', 'Bancos', 'Automação'],
     viewCount: 512,
+    likesCount: 56,
+    dislikesCount: 2,
     contentHtml: `
       <h2>Adeus à cobrança manual de extratos</h2>
       <p>Com o módulo <strong>Open Finance</strong> ativado, seu cliente concede autorização segura uma única vez e o Conciliador Contábil baixa os extratos automaticamente todos os dias às 06h da manhã.</p>
@@ -372,6 +603,7 @@ export const INITIAL_ARTICLES: Article[] = [
   },
   {
     id: 'art-4',
+    code: 'CC-106',
     title: 'Tratamento de Arquivos SISPAG e Desmembramento de Folha',
     slug: 'tratamento-sispag-folha',
     categoryId: 'cat-4',
@@ -383,6 +615,8 @@ export const INITIAL_ARTICLES: Article[] = [
     accessLevel: 'INTERNAL',
     tags: ['SISPAG', 'Folha', 'Ajuste'],
     viewCount: 45,
+    likesCount: 3,
+    dislikesCount: 1,
     contentHtml: `
       <h2>Visão do Operador sobre o SISPAG</h2>
       <p>Muitos clientes enviam lançamentos consolidados no débito do banco identificados apenas como SISPAG FORNECEDORES ou SISPAG SALARIOS.</p>
@@ -421,6 +655,7 @@ export const INITIAL_ARTICLES: Article[] = [
   },
   {
     id: 'art-5',
+    code: 'CC-107',
     title: 'Procedimento para Conciliação de Boletos com Liquidação Parcial',
     slug: 'conciliacao-boletos-liquidacao-parcial',
     categoryId: 'cat-5',
@@ -432,6 +667,8 @@ export const INITIAL_ARTICLES: Article[] = [
     accessLevel: 'INTERNAL',
     tags: ['Boletos', 'Confronto', 'Parcial'],
     viewCount: 12,
+    likesCount: 2,
+    dislikesCount: 0,
     contentHtml: `
       <h2>Solução proposta para baixas parciais de recebíveis</h2>
       <p>Quando o cliente recebe um pagamento de boleto que sofreu desconto de tarifas ou retenções de juros, o saldo no extrato diverge do contas a receber original.</p>

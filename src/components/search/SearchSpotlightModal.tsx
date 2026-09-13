@@ -12,7 +12,7 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
   onSelectArticle,
   onSelectTool,
 }) => {
-  const { isSearchOpen, setIsSearchOpen, articles, tools, categories } = useApp();
+  const { isSearchOpen, setIsSearchOpen, articles, tools, categories, currentUser } = useApp();
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -32,18 +32,22 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
   if (!isSearchOpen) return null;
 
   const normalized = query.toLowerCase().trim();
+  const isExternal = !currentUser || currentUser.userType === 'EXTERNAL' || currentUser.role === 'READER';
+  const availableArticles = articles.filter(
+    (a) => a.currentStatus === 'APPROVED' && (!isExternal || (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL'))
+  );
 
-  // Filtrar apenas artigos aprovados na busca global (ou todos se for admin)
+  // Filtrar artigos aprovados e com permissão de acesso (incluindo busca por código único como CC-101)
   const matchedArticles = normalized
-    ? articles.filter(
+    ? availableArticles.filter(
         (a) =>
-          a.currentStatus === 'APPROVED' &&
-          (a.title.toLowerCase().includes(normalized) ||
-            a.categoryName.toLowerCase().includes(normalized) ||
-            a.tags.some((t) => t.toLowerCase().includes(normalized)) ||
-            a.contentHtml.toLowerCase().includes(normalized))
+          (a.code && a.code.toLowerCase().includes(normalized)) ||
+          a.title.toLowerCase().includes(normalized) ||
+          a.categoryName.toLowerCase().includes(normalized) ||
+          a.tags.some((t) => t.toLowerCase().includes(normalized)) ||
+          a.contentHtml.toLowerCase().includes(normalized)
       )
-    : articles.filter((a) => a.currentStatus === 'APPROVED').slice(0, 5);
+    : availableArticles.slice(0, 6);
 
   const matchedTools = normalized
     ? tools.filter(
@@ -71,7 +75,7 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
       <div
         style={{
           width: '100%',
-          maxWidth: '640px',
+          maxWidth: '680px',
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-subtle)',
           borderRadius: 'var(--radius-lg)',
@@ -94,7 +98,7 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
           <input
             autoFocus
             type="text"
-            placeholder="Digite palavras-chave contábeis (ex: OFX, SISPAG, Domínio, regras, confronto)..."
+            placeholder="Pesquise por código rápido (ex: CC-101, CC-102) ou termos (OFX, SISPAG, regras)..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{
@@ -126,7 +130,7 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
         </div>
 
         {/* Search Results */}
-        <div style={{ maxHeight: '420px', overflowY: 'auto', padding: '12px' }}>
+        <div style={{ maxHeight: '440px', overflowY: 'auto', padding: '12px' }}>
           {/* Artigos */}
           <div style={{ marginBottom: '16px' }}>
             <div
@@ -144,7 +148,7 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
             </div>
             {matchedArticles.length === 0 ? (
               <div style={{ padding: '8px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Nenhum artigo encontrado para esta busca.
+                Nenhum artigo encontrado para esta busca rápida.
               </div>
             ) : (
               matchedArticles.map((art) => (
@@ -166,14 +170,31 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <BookOpen size={16} color="var(--color-primary)" />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <BookOpen size={18} color="var(--color-primary)" style={{ flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                        {art.title}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: 'rgba(92, 183, 128, 0.15)',
+                            color: 'var(--color-primary)',
+                            border: '1px solid rgba(92, 183, 128, 0.3)',
+                            fontFamily: 'monospace',
+                            letterSpacing: '0.04em',
+                          }}
+                        >
+                          {art.code || 'CC-DOC'}
+                        </span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                          {art.title}
+                        </span>
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                        Módulo: {art.categoryName} • {art.tags.join(', ')}
+                        Módulo: <strong>{art.categoryName}</strong> • Criado por: <strong>{art.authorName || 'Fulvio Tanure'}</strong> em {new Date(art.createdAt).toLocaleDateString('pt-BR')}
                       </div>
                     </div>
                   </div>
