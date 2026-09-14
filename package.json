@@ -8,9 +8,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && firebase deploy",
-    "deploy:hosting": "npm run build && firebase deploy --only hosting",
-    "deploy:rules": "firebase deploy --only firestore:rules,storage"
+    "deploy": "npm run build && npx firebase deploy",
+    "deploy:hosting": "npm run build && npx firebase deploy --only hosting",
+    "deploy:rules": "npx firebase deploy --only firestore:rules,storage"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
