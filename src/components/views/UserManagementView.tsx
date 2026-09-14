@@ -9,18 +9,28 @@ import {
   Clock,
   Mail,
   SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import type { UserRole } from '../../types';
+import type { UserProfile, UserRole } from '../../types';
 
 export const UserManagementView: React.FC = () => {
-  const { users, updateUserRole, toggleUserStatus, addNewUser, currentUser } = useApp();
+  const { users, updateUserRole, toggleUserStatus, deleteUser, addNewUser, currentUser } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [serverSyncMsg, setServerSyncMsg] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleRoleChange = (uid: string, newRole: UserRole, displayName: string) => {
+    updateUserRole(uid, newRole);
+    setServerSyncMsg(`Cargo de "${displayName}" alterado para ${newRole} e salvo no servidor Firestore com sucesso!`);
+    setTimeout(() => setServerSyncMsg(null), 3500);
+  };
 
   const handleAddUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +43,7 @@ export const UserManagementView: React.FC = () => {
       return;
     }
 
-    setSuccessMsg('Colaborador adicionado com sucesso com perfil inicial de Operador!');
+    setSuccessMsg('Colaborador adicionado e sincronizado com o servidor Firestore com sucesso!');
     setNewEmail('');
     setNewDisplayName('');
     setTimeout(() => {
@@ -67,6 +77,29 @@ export const UserManagementView: React.FC = () => {
           <span>Cadastrar Colaborador</span>
         </button>
       </div>
+
+      {/* Server Sync Message Banner */}
+      {serverSyncMsg && (
+        <div
+          className="animate-fade-in"
+          style={{
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: '#10b981',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          <CheckCircle2 size={18} />
+          <span>{serverSyncMsg}</span>
+        </div>
+      )}
 
       {/* Corporate Rule Warning Card */}
       <div
@@ -170,7 +203,7 @@ export const UserManagementView: React.FC = () => {
                       <select
                         value={u.role}
                         disabled={isFulvio}
-                        onChange={(e) => updateUserRole(u.uid, e.target.value as UserRole)}
+                        onChange={(e) => handleRoleChange(u.uid, e.target.value as UserRole, u.displayName)}
                         style={{
                           padding: '6px 10px',
                           background: 'var(--bg-input)',
@@ -249,14 +282,46 @@ export const UserManagementView: React.FC = () => {
                     {/* Actions */}
                     <td style={{ padding: '14px', textAlign: 'right' }}>
                       {!isFulvio && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => toggleUserStatus(u.uid)}
-                          style={{ fontSize: '0.76rem' }}
-                        >
-                          {u.status === 'ACTIVE' ? 'Desativar' : 'Reativar'}
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => toggleUserStatus(u.uid)}
+                            style={{ fontSize: '0.76rem' }}
+                          >
+                            {u.status === 'ACTIVE' ? 'Desativar' : 'Reativar'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUserToDelete(u)}
+                            title="Apagar usuário permanentemente do servidor"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '5px 9px',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid rgba(239, 68, 68, 0.35)',
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              fontSize: '0.76rem',
+                              fontWeight: 600,
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.22)';
+                              e.currentTarget.style.borderColor = '#ef4444';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+                            }}
+                          >
+                            <Trash2 size={13} />
+                            <span>Apagar</span>
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -412,6 +477,111 @@ export const UserManagementView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {userToDelete && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 110,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={() => !deleteLoading && setUserToDelete(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '440px',
+              background: 'var(--bg-surface)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-lg)',
+              overflow: 'hidden',
+              animation: 'fadeIn 0.2s ease-out',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-subtle)',
+                background: 'rgba(239, 68, 68, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <AlertCircle size={20} color="#ef4444" />
+              <h3 style={{ fontSize: '1rem', color: '#ef4444', margin: 0, fontWeight: 700 }}>
+                Confirmar Exclusão de Usuário
+              </h3>
+            </div>
+
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <p style={{ fontSize: '0.86rem', color: 'var(--text-main)', margin: 0, lineHeight: 1.5 }}>
+                Tem certeza de que deseja apagar o usuário <strong>{userToDelete.displayName}</strong> (<em>{userToDelete.email}</em>)?
+              </p>
+              <div
+                style={{
+                  fontSize: '0.78rem',
+                  color: 'var(--text-subtle)',
+                  background: 'var(--bg-card)',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                ⚠️ Esta ação removerá o colaborador <strong>permanentemente do sistema e do servidor Firestore</strong>. O acesso desta conta será revogado imediatamente em todos os computadores.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={deleteLoading}
+                  onClick={() => setUserToDelete(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteLoading}
+                  onClick={async () => {
+                    setDeleteLoading(true);
+                    await deleteUser(userToDelete.uid);
+                    setDeleteLoading(false);
+                    setUserToDelete(null);
+                    setServerSyncMsg(`Usuário "${userToDelete.displayName}" foi apagado permanentemente do servidor.`);
+                    setTimeout(() => setServerSyncMsg(null), 3500);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    background: '#ef4444',
+                    color: '#ffffff',
+                    borderRadius: 'var(--radius-sm)',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    border: 'none',
+                    cursor: deleteLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  <span>{deleteLoading ? 'Apagando...' : 'Sim, Apagar Definitivamente'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

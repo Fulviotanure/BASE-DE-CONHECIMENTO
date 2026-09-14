@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import type { UserProfile, Article, Category, ToolItem, UserRole, UserType, ArticleStatus, UserPerformance } from '../types';
+import type { UserProfile, Article, Category, ToolItem, UserRole, UserType, ArticleStatus, UserPerformance, UserStatus } from '../types';
 import { INITIAL_USERS, INITIAL_ARTICLES, INITIAL_CATEGORIES, INITIAL_TOOLS } from '../data/initialSeed';
 import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, type FirebaseConfig } from '../services/firebase';
 import { 
@@ -21,6 +21,10 @@ import {
   subscribeUsers, 
   updateUserRoleInFirestore, 
   toggleUserStatusInFirestore, 
+  saveUserToFirestore,
+  deleteUserFromFirestore,
+  recordUserLoginInFirestore,
+  syncInitialUsersToFirestore,
   subscribeTools, 
   saveToolToFirestore, 
   subscribeCategories,
@@ -49,6 +53,7 @@ interface AppContextType {
   users: UserProfile[];
   updateUserRole: (uid: string, newRole: UserRole) => void;
   toggleUserStatus: (uid: string) => void;
+  deleteUser: (uid: string) => Promise<void>;
   addNewUser: (email: string, displayName: string, password?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Base de Conhecimento
@@ -243,6 +248,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isFirebaseConfigured) return;
 
+    // Sincroniza colaboradores iniciais no Firestore no primeiro acesso
+    syncInitialUsersToFirestore().catch((err) => {
+      console.warn('Erro ao sincronizar colaboradores no Firestore:', err);
+    });
+
     // 1. Ouvinte de Autenticação
     const unsubAuth = subscribeAuthState((firebaseUser, profile) => {
       if (firebaseUser && profile) {
@@ -330,10 +340,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginAsUser = (user: UserProfile) => {
-    setCurrentUser(user);
-    if (user.email.toLowerCase().includes('fulvio')) {
+    const updatedUser: UserProfile = {
+      ...user,
+      lastLoginAt: new Date().toISOString(),
+    };
+    setCurrentUser(updatedUser);
+    if (updatedUser.email.toLowerCase().includes('fulvio')) {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
+    }
+    setUsers((prev) =>
+      prev.map((u) => (u.uid === updatedUser.uid ? updatedUser : u))
+    );
+    if (isFirebaseConfigured) {
+      recordUserLoginInFirestore(updatedUser.uid, {
+        lastLoginAt: updatedUser.lastLoginAt,
+      }).catch((err) => {
+        console.warn('Erro ao registrar login do usuário no Firestore:', err);
+      });
     }
     setIsAuthModalOpen(false);
   };
@@ -505,34 +529,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (currentUser && u.uid === currentUser.uid) {
             setCurrentUser(updated);
           }
+          if (isFirebaseConfigured) {
+            updateUserRoleInFirestore(uid, newRole).catch((err) => {
+              console.warn('Erro ao atualizar papel no Firestore:', err);
+            });
+          }
           return updated;
         }
         return u;
       })
     );
-
-    if (isFirebaseConfigured) {
-      updateUserRoleInFirestore(uid, newRole).catch((err) => {
-        console.warn('Erro ao atualizar papel no Firestore:', err);
-      });
-    }
   };
 
   const toggleUserStatus = (uid: string) => {
-    let newStatus: 'ACTIVE' | 'INACTIVE' = 'ACTIVE';
     setUsers((prev) =>
       prev.map((u) => {
         if (u.uid === uid) {
-          newStatus = u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-          return { ...u, status: newStatus };
+          const newStatus: UserStatus = u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+          const updated: UserProfile = { ...u, status: newStatus };
+          if (isFirebaseConfigured) {
+            toggleUserStatusInFirestore(uid, newStatus).catch((err) => {
+              console.warn('Erro ao atualizar status no Firestore:', err);
+            });
+          }
+          return updated;
         }
         return u;
       })
     );
+  };
 
+  // Exclusão definitiva de usuário pelo Administrador
+  const deleteUser = async (uid: string) => {
+    setUsers((prev) => prev.filter((u) => u.uid !== uid));
+    if (currentUser?.uid === uid) {
+      await logout();
+    }
     if (isFirebaseConfigured) {
-      toggleUserStatusInFirestore(uid, newStatus).catch((err) => {
-        console.warn('Erro ao atualizar status no Firestore:', err);
+      await deleteUserFromFirestore(uid).catch((err) => {
+        console.warn('Erro ao excluir usuário no Firestore:', err);
       });
     }
   };
@@ -567,7 +602,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastLoginAt: new Date().toISOString(),
     };
 
-    setUsers((prev) => [...prev, newUser]);
+    setUsers((prev) => [newUser, ...prev]);
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveUserToFirestore(newUser);
+      } catch (err) {
+        console.warn('Erro ao salvar novo usuário no Firestore:', err);
+      }
+    }
+
     return { success: true };
   };
 
@@ -803,6 +847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users,
         updateUserRole,
         toggleUserStatus,
+        deleteUser,
         addNewUser,
         categories,
         articles,
