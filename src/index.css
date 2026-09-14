@@ -491,7 +491,8 @@ input, textarea, select {
 }
 
 .article-visual-editor .video-container iframe,
-.article-preview-content .video-container iframe {
+.article-preview-content .video-container iframe,
+.article-rendered-body .video-container iframe {
   position: absolute;
   top: 0;
   left: 0;
@@ -500,5 +501,209 @@ input, textarea, select {
   border: 0;
   border-radius: 8px;
 }
+
+/* ==========================================================================
+   Article Body & Dynamic Theme Typography
+   Branco no modo escuro, Preto no modo claro.
+   Suporte a texto dinâmico adaptativo e estilos ricos.
+   ========================================================================== */
+
+.article-rendered-body,
+.article-visual-editor,
+.article-preview-content {
+  color: var(--text-main);
+  line-height: 1.75;
+}
+
+.article-rendered-body h1,
+.article-rendered-body h2,
+.article-rendered-body h3,
+.article-rendered-body h4,
+.article-rendered-body h5,
+.article-rendered-body h6,
+.article-visual-editor h1,
+.article-visual-editor h2,
+.article-visual-editor h3,
+.article-visual-editor h4,
+.article-visual-editor h5,
+.article-visual-editor h6,
+.article-preview-content h1,
+.article-preview-content h2,
+.article-preview-content h3,
+.article-preview-content h4,
+.article-preview-content h5,
+.article-preview-content h6 {
+  color: var(--text-main);
+  margin-top: 1.3em;
+  margin-bottom: 0.5em;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.article-rendered-body p,
+.article-visual-editor p,
+.article-preview-content p {
+  color: var(--text-main);
+  margin-bottom: 1em;
+  line-height: 1.75;
+}
+
+.article-rendered-body ul,
+.article-rendered-body ol,
+.article-visual-editor ul,
+.article-visual-editor ol,
+.article-preview-content ul,
+.article-preview-content ol {
+  color: var(--text-main);
+  padding-left: 24px;
+  margin-bottom: 1.1em;
+}
+
+.article-rendered-body li,
+.article-visual-editor li,
+.article-preview-content li {
+  color: var(--text-main);
+  margin-bottom: 6px;
+  line-height: 1.7;
+}
+
+.article-rendered-body strong,
+.article-rendered-body b,
+.article-visual-editor strong,
+.article-visual-editor b,
+.article-preview-content strong,
+.article-preview-content b {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+/* Dynamic text class & inherit color helpers */
+.text-dynamic,
+[data-dynamic-color="true"],
+.article-rendered-body span[style*="inherit"],
+.article-visual-editor span[style*="inherit"],
+.article-preview-content span[style*="inherit"] {
+  color: var(--text-main) !important;
+}
+
+/* Force override of hardcoded dark/black text colors imported from HTML */
+.article-rendered-body [style*="color: rgb(0, 0, 0)"],
+.article-rendered-body [style*="color: #000"],
+.article-rendered-body [style*="color: #000000"],
+.article-rendered-body [style*="color: black"],
+.article-rendered-body [style*="color: rgb(65, 65, 65)"],
+.article-rendered-body [style*="color: #333"],
+.article-rendered-body [style*="color: #333333"],
+.article-rendered-body [style*="color: #414141"],
+.article-rendered-body [style*="color: initial"],
+.article-visual-editor [style*="color: rgb(0, 0, 0)"],
+.article-visual-editor [style*="color: #000"],
+.article-visual-editor [style*="color: #000000"],
+.article-visual-editor [style*="color: black"],
+.article-visual-editor [style*="color: rgb(65, 65, 65)"],
+.article-visual-editor [style*="color: #333"],
+.article-visual-editor [style*="color: #333333"],
+.article-visual-editor [style*="color: #414141"],
+.article-visual-editor [style*="color: initial"],
+.article-preview-content [style*="color: rgb(0, 0, 0)"],
+.article-preview-content [style*="color: #000"],
+.article-preview-content [style*="color: #000000"],
+.article-preview-content [style*="color: black"],
+.article-preview-content [style*="color: rgb(65, 65, 65)"],
+.article-preview-content [style*="color: #333"],
+.article-preview-content [style*="color: #333333"],
+.article-preview-content [style*="color: #414141"],
+.article-preview-content [style*="color: initial"] {
+  color: var(--text-main) !important;
+}
+
+/* In Light Mode: override hardcoded pure white font colors that lack background so they stay legible */
+[data-theme='light'] .article-rendered-body [style*="color: rgb(255, 255, 255)"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-rendered-body [style*="color: #fff"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-rendered-body [style*="color: #ffffff"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-visual-editor [style*="color: rgb(255, 255, 255)"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-visual-editor [style*="color: #fff"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-visual-editor [style*="color: #ffffff"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-preview-content [style*="color: rgb(255, 255, 255)"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-preview-content [style*="color: #fff"]:not([style*="background"]):not(.badge):not(button),
+[data-theme='light'] .article-preview-content [style*="color: #ffffff"]:not([style*="background"]):not(.badge):not(button) {
+  color: var(--text-main) !important;
+}
+
+/* Callouts in Article Rendered Body */
+.article-rendered-body .callout {
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  margin: 16px 0;
+  display: block;
+}
+
+.article-rendered-body .callout-tip {
+  background: rgba(92, 183, 128, 0.10);
+  border-left: 4px solid #5cb780;
+  color: var(--text-main);
+}
+
+.article-rendered-body .callout-info {
+  background: rgba(56, 189, 248, 0.10);
+  border-left: 4px solid #38bdf8;
+  color: var(--text-main);
+}
+
+.article-rendered-body .callout-warning {
+  background: rgba(245, 158, 11, 0.10);
+  border-left: 4px solid #f59e0b;
+  color: var(--text-main);
+}
+
+.article-rendered-body blockquote {
+  border-left: 4px solid var(--color-primary);
+  padding: 8px 16px;
+  margin: 14px 0;
+  background: rgba(92, 183, 128, 0.05);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.article-rendered-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  margin: 14px 0;
+}
+
+/* Tables in articles */
+.article-rendered-body table,
+.article-visual-editor table,
+.article-preview-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.article-rendered-body th,
+.article-visual-editor th,
+.article-preview-content th {
+  background: var(--bg-surface);
+  color: var(--text-main);
+  padding: 10px 14px;
+  font-weight: 700;
+  text-align: left;
+  border-bottom: 2px solid var(--border-subtle);
+}
+
+.article-rendered-body td,
+.article-visual-editor td,
+.article-preview-content td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-main);
+}
+
 
 

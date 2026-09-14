@@ -25,44 +25,50 @@ const MainApp: React.FC = () => {
     setCurrentUser 
   } = useApp();
 
-  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
-  const isInternal = !isExternal && (currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email?.includes('conciliadorcontabil.com.br')));
+  const isCorporate = Boolean(currentUser?.email?.toLowerCase().endsWith('@conciliadorcontabil.com.br'));
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL' || !isCorporate;
+  const isInternal = !isExternal && isCorporate;
 
-  // Define a view inicial: se não houver usuário, vai para landing page de apresentação
+  // Define a view inicial: sempre 'kb' se logado (unificado para cliente, leitor e interno)
   const [activeView, setActiveView] = useState<string>(() => {
     if (!currentUser) return 'landing';
-    return isInternal ? 'kb' : 'external-portal';
+    return 'kb';
   });
 
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const [isProposalMode, setIsProposalMode] = useState(false);
+  const [previousView, setPreviousView] = useState<string>('kb');
 
-  // Sincroniza a visão ativa quando o usuário faz login ou logout
+  // Sincroniza a visão ativa quando o usuário faz login ou logout ou altera papel
   useEffect(() => {
     if (!currentUser) {
       setActiveView('landing');
     } else {
-      if (isInternal && (activeView === 'landing' || activeView === 'external-portal')) {
+      // Clientes e leitores externos NUNCA podem acessar Ferramentas, Dashboard, Fila, Usuários ou Edição interna
+      if (isExternal && (activeView === 'dashboard' || activeView === 'queue' || activeView === 'users' || activeView === 'my-articles' || activeView === 'tools' || activeView === 'editor')) {
         setActiveView('kb');
-      } else if (!isInternal && activeView === 'landing') {
-        setActiveView('external-portal');
+      } else if (activeView === 'landing' || activeView === 'external-portal') {
+        setActiveView('kb');
       }
     }
-  }, [currentUser, isInternal]);
+  }, [currentUser, isExternal, activeView]);
 
   const handleOpenNewArticle = () => {
+    setPreviousView(activeView);
     setEditingArticle(null);
     setIsProposalMode(false);
     setActiveView('editor');
   };
 
   const handleEditArticle = (art: Article) => {
+    setPreviousView(activeView);
     setEditingArticle(art);
     setIsProposalMode(false);
     setActiveView('editor');
   };
 
   const handleProposeArticleEdit = (art: Article) => {
+    setPreviousView(activeView);
     setEditingArticle(art);
     setIsProposalMode(true);
     setActiveView('editor');
@@ -70,19 +76,15 @@ const MainApp: React.FC = () => {
 
   const handleViewArticle = (art: Article) => {
     setSelectedArticle(art);
-    if (isInternal) {
-      setActiveView('kb');
-    } else {
-      setActiveView('external-portal');
-    }
+    setActiveView('kb');
   };
 
   const isLanding = activeView === 'landing' || !currentUser;
 
   return (
     <div className="app-container">
-      {/* Sidebar Navigation - apenas para colaboradores internos (oculta para clientes e na landing page) */}
-      {!isLanding && !isExternal && (
+      {/* Sidebar Navigation - unificada para leitores, clientes e colaboradores internos */}
+      {!isLanding && (
         <Sidebar
           activeView={activeView}
           setActiveView={setActiveView}
@@ -98,43 +100,45 @@ const MainApp: React.FC = () => {
           {/* Tela de Login Inicial Minimalista */}
           {activeView === 'landing' && (
             <LoginPageView 
-              onAccessExternalPortal={() => setActiveView('external-portal')} 
+              onAccessExternalPortal={() => setActiveView('kb')} 
             />
           )}
 
-          {/* Portal Externo para Clientes e Visitantes */}
-          {activeView === 'external-portal' && (
-            <ExternalPortalView 
-              onBackToPresentation={() => setActiveView('landing')}
-              onSelectArticle={(art) => {
-                setSelectedArticle(art);
-              }}
-            />
+          {/* Base de Conhecimento:
+              - Para CLIENTES e VISITANTES (isExternal): renderiza o portal moderno ExternalPortalView (com background, busca elegante, cards e leitura expandida)
+              - Para COLABORADORES INTERNOS (isInternal): renderiza KnowledgeBaseView
+          */}
+          {(activeView === 'kb' || activeView === 'external-portal') && (
+            isExternal ? (
+              <ExternalPortalView 
+                onSelectArticle={(art) => setSelectedArticle(art)}
+              />
+            ) : (
+              <KnowledgeBaseView 
+                onOpenNewArticle={handleOpenNewArticle} 
+                onProposeEdit={handleProposeArticleEdit}
+                onEditArticle={handleEditArticle}
+              />
+            )
           )}
-
-          {/* Visões Internas (Colaboradores) */}
-          {activeView === 'kb' && (
-            <KnowledgeBaseView 
-              onOpenNewArticle={handleOpenNewArticle} 
-              onProposeEdit={handleProposeArticleEdit}
-            />
-          )}
-          {activeView === 'my-articles' && (
+          {activeView === 'my-articles' && isInternal && (
             <MyArticlesView
               onOpenNewArticle={handleOpenNewArticle}
               onEditArticle={handleEditArticle}
               onViewArticle={handleViewArticle}
             />
           )}
-          {activeView === 'queue' && <EditorialQueueView />}
-          {activeView === 'tools' && <ToolsHubView />}
-          {activeView === 'dashboard' && <DashboardView />}
-          {activeView === 'users' && <UserManagementView />}
+          {activeView === 'queue' && isInternal && (
+            <EditorialQueueView onEditArticle={handleEditArticle} />
+          )}
+          {activeView === 'tools' && isInternal && <ToolsHubView />}
+          {activeView === 'dashboard' && isInternal && <DashboardView />}
+          {activeView === 'users' && isInternal && <UserManagementView />}
           {activeView === 'editor' && (
             <ArticleEditorView
               editingArticle={editingArticle}
               isProposalMode={isProposalMode}
-              onClose={() => setActiveView(isInternal ? 'kb' : 'my-articles')}
+              onClose={() => setActiveView(previousView || (isInternal ? 'kb' : 'my-articles'))}
             />
           )}
         </main>

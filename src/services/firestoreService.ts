@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Article, UserProfile, ToolItem, Category, UserRole } from '../types';
-import { INITIAL_CATEGORIES, INITIAL_ARTICLES, INITIAL_TOOLS } from '../data/initialSeed';
+import { INITIAL_CATEGORIES, INITIAL_ARTICLES, INITIAL_TOOLS, INITIAL_USERS } from '../data/initialSeed';
 
 // ----------------------------------------------------
 // Artigos
@@ -62,9 +62,9 @@ export async function updateArticleInFirestore(
 export function subscribeUsers(onData: (users: UserProfile[]) => void): () => void {
   if (!db) return () => {};
 
-  const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+  const colRef = collection(db, 'users');
   return onSnapshot(
-    q,
+    colRef,
     (snapshot) => {
       const items = snapshot.docs.map((d) => ({
         uid: d.id,
@@ -94,6 +94,47 @@ export async function toggleUserStatusInFirestore(uid: string, newStatus: 'ACTIV
     status: newStatus,
     serverUpdatedAt: serverTimestamp(),
   });
+}
+
+/**
+ * Grava usuários iniciais no Firestore se ainda não existirem.
+ * Checa por UID e por e-mail corporativo para evitar duplicação.
+ * Usa setDoc com merge:true para manter dados já gravados.
+ */
+export async function seedUsersToFirestore(): Promise<void> {
+  if (!db) return;
+
+  try {
+    const existingUsers = await getDocs(collection(db, 'users'));
+    const existingUids = new Set<string>();
+    const existingEmails = new Set<string>();
+
+    existingUsers.docs.forEach((d) => {
+      existingUids.add(d.id);
+      const data = d.data();
+      if (data && data.email) {
+        existingEmails.add(data.email.toLowerCase().trim());
+      }
+    });
+
+    const toSeed = INITIAL_USERS.filter(
+      (u) => !existingUids.has(u.uid) && !existingEmails.has(u.email.toLowerCase().trim())
+    );
+
+    for (const user of toSeed) {
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          ...user,
+          lastLoginAt: user.lastLoginAt || null,
+          serverCreatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    console.warn('Erro ao semear usuários no Firestore:', err);
+  }
 }
 
 // ----------------------------------------------------

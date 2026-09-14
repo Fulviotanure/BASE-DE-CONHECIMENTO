@@ -24,17 +24,28 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
     setIsSearchOpen,
     setIsAuthModalOpen,
     setIsProfileModalOpen,
+    setSelectedArticle,
   } = useApp();
 
-  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
-  const isInternal = !isExternal && (currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email?.includes('conciliadorcontabil.com.br')));
-  const isSuperAdmin = isPermanentSuperAdmin || Boolean(currentUser?.email?.toLowerCase().includes('fulvio')) || currentUser?.role === 'SUPER_ADMIN';
+  const isCorporate = Boolean(currentUser?.email?.toLowerCase().endsWith('@conciliadorcontabil.com.br'));
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL' || !isCorporate;
+  const isInternal = !isExternal && isCorporate;
+  const isSuperAdmin = currentUser?.email?.toLowerCase() === 'fulvio@conciliadorcontabil.com.br' && isPermanentSuperAdmin;
+
+  const handleGoHome = () => {
+    setSelectedArticle(null);
+    if (currentUser) {
+      setActiveView('kb');
+    } else {
+      setActiveView('landing');
+    }
+  };
 
   return (
     <header
       style={{
-        height: '68px',
-        background: 'var(--bg-sidebar)',
+        height: '64px',
+        background: 'var(--bg-card)',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
@@ -45,21 +56,16 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
         zIndex: 40,
       }}
     >
-      {/* Brand Logo & Title */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      {/* Brand Logo & Title (Retorna à Página Inicial e Fecha Artigos Abertos) */}
+      <div 
+        style={{ display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer', userSelect: 'none' }}
+        onClick={handleGoHome}
+        title="Retornar à página inicial da Base de Conhecimento"
+      >
         <img
           src={theme === 'light' ? '/logo-light.svg' : '/conciliador-logo.png'}
           alt="Conciliador Contábil"
-          style={{ height: '36px', width: 'auto', objectFit: 'contain', cursor: 'pointer' }}
-          onClick={() => {
-            if (currentUser && isInternal) {
-              setActiveView('kb');
-            } else if (currentUser && !isInternal) {
-              setActiveView('external-portal');
-            } else {
-              setActiveView('landing');
-            }
-          }}
+          style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
           onError={(e) => {
             (e.target as HTMLElement).style.display = 'none';
           }}

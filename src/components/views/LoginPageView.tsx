@@ -24,8 +24,6 @@ export const LoginPageView: React.FC<LoginPageViewProps> = () => {
     loginWithGoogleAuth,
     loginWithEmail,
     registerClientAccount,
-    loginAsUser,
-    users,
     theme,
     toggleTheme,
   } = useApp();
@@ -410,78 +408,6 @@ export const LoginPageView: React.FC<LoginPageViewProps> = () => {
               <span>Entrar</span>
             </button>
 
-            {/* Atalhos Rápidos para Testes de Desenvolvimento */}
-            <div
-              style={{
-                marginTop: '28px',
-                paddingTop: '20px',
-                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>
-                Acesso Rápido de Teste:
-              </span>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const fulvio = users.find((u) => u.email.toLowerCase().includes('fulvio')) || users[0];
-                    if (fulvio) loginAsUser(fulvio);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(92, 183, 128, 0.12)',
-                    border: '1px solid rgba(92, 183, 128, 0.25)',
-                    color: '#5cb780',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Fulvio (Super Admin)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const op = users.find((u) => u.role === 'OPERATOR') || users[1];
-                    if (op) loginAsUser(op);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(245, 158, 11, 0.12)',
-                    border: '1px solid rgba(245, 158, 11, 0.25)',
-                    color: '#f59e0b',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Operador
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const cl = users.find((u) => u.role === 'READER' || u.userType === 'EXTERNAL') || users[2];
-                    if (cl) loginAsUser(cl);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(56, 189, 248, 0.12)',
-                    border: '1px solid rgba(56, 189, 248, 0.25)',
-                    color: '#38bdf8',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cliente
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </main>

@@ -16,7 +16,7 @@ export const CORPORATE_DOMAIN = '@conciliadorcontabil.com.br';
 
 export function isCorporateEmailValid(email: string): boolean {
   const clean = email.trim().toLowerCase();
-  return clean.endsWith(CORPORATE_DOMAIN) || clean.includes('fulvio');
+  return clean.endsWith(CORPORATE_DOMAIN);
 }
 
 export function determineUserType(email: string): UserType {
@@ -25,7 +25,7 @@ export function determineUserType(email: string): UserType {
 
 export function isSuperAdminUser(email: string): boolean {
   const clean = email.trim().toLowerCase();
-  return clean.includes('fulvio');
+  return clean === 'fulvio@conciliadorcontabil.com.br';
 }
 
 export function isAdminUser(email: string): boolean {
@@ -67,10 +67,16 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
 
       if (userDoc.exists()) {
         profile = userDoc.data() as UserProfile;
-        if (isSuperAdminUser(cleanEmail)) {
+        if (!isCorporateEmailValid(cleanEmail)) {
+          // Usuários com contas externas (ex: Gmail) são estritamente CLIENTES/LEITORES
+          profile.role = 'READER';
+          profile.userType = 'EXTERNAL';
+        } else if (isSuperAdminUser(cleanEmail)) {
           profile.role = 'SUPER_ADMIN';
+          profile.userType = 'INTERNAL';
+        } else {
+          profile.userType = 'INTERNAL';
         }
-        profile.userType = userType;
         profile.displayName = firebaseUser.displayName || profile.displayName;
         profile.photoURL = firebaseUser.photoURL || profile.photoURL;
         profile.lastLoginAt = new Date().toISOString();
@@ -274,10 +280,15 @@ export function subscribeAuthState(
         const snapshot = await getDoc(userRef);
         if (snapshot.exists()) {
           const profile = snapshot.data() as UserProfile;
-          if (isSuperAdminUser(cleanEmail)) {
+          if (!isCorporateEmailValid(cleanEmail)) {
+            profile.role = 'READER';
+            profile.userType = 'EXTERNAL';
+          } else if (isSuperAdminUser(cleanEmail)) {
             profile.role = 'SUPER_ADMIN';
+            profile.userType = 'INTERNAL';
+          } else {
+            profile.userType = 'INTERNAL';
           }
-          profile.userType = profile.userType || userType;
           onUserChanged(firebaseUser, profile);
           return;
         }

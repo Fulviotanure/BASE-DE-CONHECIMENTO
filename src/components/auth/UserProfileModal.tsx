@@ -28,9 +28,10 @@ export const UserProfileModal: React.FC = () => {
 
   if (!isProfileModalOpen || !currentUser) return null;
 
-  const isExternal = currentUser.role === 'READER' || currentUser.userType === 'EXTERNAL';
-  const isInternal = !isExternal && (currentUser.userType === 'INTERNAL' || currentUser.email.includes('conciliadorcontabil.com.br'));
-  const canSimulate = isPermanentSuperAdmin || Boolean(currentUser.email.toLowerCase().includes('fulvio')) || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN';
+  const isCorporate = currentUser.email.toLowerCase().endsWith('@conciliadorcontabil.com.br');
+  const isExternal = currentUser.role === 'READER' || currentUser.userType === 'EXTERNAL' || !isCorporate;
+  const isInternal = !isExternal && isCorporate;
+  const canSimulate = isPermanentSuperAdmin && currentUser.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
 
   const roleLabel = {
     SUPER_ADMIN: '👑 Super Administrador (Fixo)',

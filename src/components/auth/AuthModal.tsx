@@ -10,7 +10,6 @@ import {
   ArrowRight, 
   Sparkles, 
   ExternalLink,
-  Zap,
   Info
 } from 'lucide-react';
 import { loginWithEmailPassword, registerWithEmailPassword, CORPORATE_DOMAIN } from '../../services/authService';
@@ -24,7 +23,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { loginWithGoogleAuth, users, loginAsUser } = useApp();
+  const { loginWithGoogleAuth } = useApp();
 
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [email, setEmail] = useState('');
@@ -33,7 +32,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [showDemoSelector, setShowDemoSelector] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (!isOpen) return null;
 
@@ -107,7 +106,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       let msg = 'Ocorreu um erro ao processar a autenticação.';
 
       if (err.code === 'auth/operation-not-allowed' || err.message?.includes('operation-not-allowed')) {
-        msg = 'O provedor de autenticação (E-mail/Senha) precisa ser ativado no Console da Nuvem (Authentication > Sign-in method > E-mail/senha). Você também pode utilizar o "Acesso Rápido de Teste" abaixo.';
+        msg = 'O provedor de autenticação (E-mail/Senha) precisa ser ativado no Console da Nuvem (Authentication > Sign-in method > E-mail/senha).';
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         msg = 'E-mail ou senha incorretos. Verifique suas credenciais.';
       } else if (err.code === 'auth/email-already-in-use') {
@@ -124,11 +123,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     }
   };
 
-  const handleQuickDemoLogin = (userToLogin: UserProfile) => {
-    loginAsUser(userToLogin);
-    onSuccess(userToLogin);
-    onClose();
-  };
 
   return (
     <div 
@@ -544,110 +538,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             </button>
           </form>
 
-          {/* Atalho de Teste / Homologação Rápida */}
-          <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
-            <button
-              type="button"
-              onClick={() => setShowDemoSelector(!showDemoSelector)}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-subtle)',
-                fontSize: '0.76rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-              }}
-            >
-              <Zap size={13} color="#f59e0b" />
-              <span>{showDemoSelector ? 'Ocultar Acesso Rápido de Teste' : 'Atalho Rápido de Teste (Colaboradores)'}</span>
-            </button>
-
-            {showDemoSelector && (
-              <div 
-                style={{ 
-                  marginTop: '10px', 
-                  padding: '10px', 
-                  background: 'var(--bg-card)', 
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-subtle)',
-                  maxHeight: '180px',
-                  overflowY: 'auto',
-                }}
-              >
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-subtle)', marginBottom: '6px' }}>
-                  Selecione um usuário para simulação imediata:
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {users.map((u) => (
-                    <button
-                      key={u.uid}
-                      type="button"
-                      onClick={() => handleQuickDemoLogin(u)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '6px 8px',
-                        borderRadius: '4px',
-                        background: 'var(--bg-input)',
-                        border: '1px solid var(--border-subtle)',
-                        color: 'var(--text-main)',
-                        fontSize: '0.74rem',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
-                    >
-                      <span style={{ fontWeight: 600 }}>{u.displayName}</span>
-                      <span 
-                        style={{ 
-                          fontSize: '0.65rem', 
-                          padding: '1px 5px', 
-                          borderRadius: '3px',
-                          background:
-                            u.role === 'SUPER_ADMIN'
-                              ? 'rgba(245, 158, 11, 0.2)'
-                              : u.role === 'ADMIN'
-                              ? 'rgba(92, 183, 128, 0.2)'
-                              : u.role === 'REVIEWER'
-                              ? 'rgba(108, 99, 255, 0.2)'
-                              : u.role === 'READER'
-                              ? 'rgba(56, 189, 248, 0.2)'
-                              : 'rgba(255, 255, 255, 0.1)',
-                          color:
-                            u.role === 'SUPER_ADMIN'
-                              ? '#f59e0b'
-                              : u.role === 'ADMIN'
-                              ? '#5cb780'
-                              : u.role === 'REVIEWER'
-                              ? '#6c63ff'
-                              : u.role === 'READER'
-                              ? '#38bdf8'
-                              : 'var(--text-main)',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {u.role === 'SUPER_ADMIN'
-                          ? 'Super Admin'
-                          : u.role === 'ADMIN'
-                          ? 'Admin'
-                          : u.role === 'REVIEWER'
-                          ? 'Revisor'
-                          : u.role === 'READER' || u.userType === 'EXTERNAL'
-                          ? 'Cliente'
-                          : 'Operador'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>

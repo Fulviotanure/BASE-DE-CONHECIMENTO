@@ -16,6 +16,13 @@ export interface UserProfile {
   lastLoginAt?: string | null;
 }
 
+export interface Subcategory {
+  id: string;
+  categoryId: string;
+  title: string;
+  slug: string;
+}
+
 export interface Category {
   id: string;
   title: string;
@@ -24,6 +31,7 @@ export interface Category {
   icon: string;
   orderIndex: number;
   articleCount?: number;
+  subcategories?: Subcategory[];
 }
 
 export type ArticleStatus = 'PENDING' | 'IN_ADJUSTMENT' | 'APPROVED' | 'REJECTED';
@@ -55,6 +63,8 @@ export interface Article {
   slug: string;
   categoryId: string;
   categoryName: string;
+  subcategoryId?: string;
+  subcategoryName?: string;
   authorId: string;
   authorName: string;
   authorEmail: string;

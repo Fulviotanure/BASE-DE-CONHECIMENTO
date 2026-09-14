@@ -44,10 +44,11 @@ export const UserManagementView: React.FC = () => {
     const usu: UserProfile[] = [];
 
     users.forEach((u) => {
-      const isInternal =
-        u.userType === 'INTERNAL' ||
-        u.email.endsWith('@conciliadorcontabil.com.br') ||
-        u.email.toLowerCase().includes('fulvio');
+      // Regra estrita: Apenas emails que terminam com @conciliadorcontabil.com.br são colaboradores internos.
+      // Qualquer outro domínio (ex: @gmail.com, parceiros, etc.) é classificado como Cliente/Usuário Externo.
+      const isInternal = Boolean(
+        u.email && u.email.trim().toLowerCase().endsWith('@conciliadorcontabil.com.br')
+      );
 
       if (isInternal) {
         colab.push(u);
@@ -60,13 +61,13 @@ export const UserManagementView: React.FC = () => {
   }, [users]);
 
   // Função de Ordenação solicitada:
-  // 1. Fulvio sempre no topo absoluto
+  // 1. Fulvio (fulvio@conciliadorcontabil.com.br) sempre no topo absoluto
   // 2. Por hierarquia de cargo: Administradores -> Revisores -> Operadores -> Leitores
   // 3. Ordem alfabética por nome dentro do mesmo cargo
   const sortUsers = (list: UserProfile[]): UserProfile[] => {
     return [...list].sort((a, b) => {
-      const aIsFulvio = a.email.toLowerCase().includes('fulvio');
-      const bIsFulvio = b.email.toLowerCase().includes('fulvio');
+      const aIsFulvio = a.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+      const bIsFulvio = b.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
       if (aIsFulvio && !bIsFulvio) return -1;
       if (!aIsFulvio && bIsFulvio) return 1;
 
@@ -111,16 +112,16 @@ export const UserManagementView: React.FC = () => {
   }, [activeTab, colaboradoresList, usuariosList, searchTerm]);
 
   // Situação do Usuário:
-  // - ONLINE: se estiver no site agora (usuário logado na sessão ativa)
-  // - LOGADO: se já logou ao menos uma vez (lastLoginAt presente)
-  // - OFFLINE: se nunca logou (lastLoginAt nulo/vazio)
-  const getUserSituation = (u: UserProfile): { status: 'ONLINE' | 'LOGADO' | 'OFFLINE'; label: string; bg: string; color: string; border: string } => {
-    const isCurrentSession = currentUser && currentUser.uid === u.uid;
+  // - ONLINE: se estiver na sessão ativa atual
+  // - JÁ ACESSOU: se já logou ao menos uma vez (lastLoginAt presente)
+  // - AGUARDANDO 1º ACESSO: se nunca logou (lastLoginAt nulo/vazio)
+  const getUserSituation = (u: UserProfile): { status: 'ONLINE' | 'LOGADO' | 'PENDING'; label: string; bg: string; color: string; border: string } => {
+    const isCurrentSession = currentUser && (currentUser.uid === u.uid || currentUser.email.toLowerCase() === u.email.toLowerCase());
 
     if (isCurrentSession) {
       return {
         status: 'ONLINE',
-        label: 'Online (No site)',
+        label: 'Online (Sessão Atual)',
         bg: 'rgba(16, 185, 129, 0.15)',
         color: '#10b981',
         border: 'rgba(16, 185, 129, 0.35)',
@@ -128,9 +129,23 @@ export const UserManagementView: React.FC = () => {
     }
 
     if (u.lastLoginAt) {
+      const formattedDate = (() => {
+        try {
+          const d = new Date(u.lastLoginAt);
+          if (isNaN(d.getTime())) return 'Já acessou';
+          const day = String(d.getDate()).padStart(2, '0');
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const hours = String(d.getHours()).padStart(2, '0');
+          const mins = String(d.getMinutes()).padStart(2, '0');
+          return `Acessou em ${day}/${month} às ${hours}:${mins}`;
+        } catch {
+          return 'Já acessou';
+        }
+      })();
+
       return {
         status: 'LOGADO',
-        label: 'Logado (Já acessou)',
+        label: formattedDate,
         bg: 'rgba(56, 189, 248, 0.15)',
         color: '#38bdf8',
         border: 'rgba(56, 189, 248, 0.35)',
@@ -138,11 +153,11 @@ export const UserManagementView: React.FC = () => {
     }
 
     return {
-      status: 'OFFLINE',
-      label: 'Offline (Nunca acessou)',
-      bg: 'rgba(148, 163, 184, 0.12)',
-      color: 'var(--text-muted)',
-      border: 'rgba(148, 163, 184, 0.25)',
+      status: 'PENDING',
+      label: 'Aguardando 1º acesso',
+      bg: 'rgba(245, 158, 11, 0.10)',
+      color: '#f59e0b',
+      border: 'rgba(245, 158, 11, 0.30)',
     };
   };
 
@@ -182,7 +197,7 @@ export const UserManagementView: React.FC = () => {
             Gestão de Usuários & Permissões (RBAC)
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
-            Painel do Administrador (<strong>{currentUser?.displayName || 'Fulvio Tanure'}</strong>) para governança e atribuição de cargos.
+            Painel de governança, controle de acesso e atribuição de cargos.
           </p>
         </div>
 
@@ -354,8 +369,8 @@ export const UserManagementView: React.FC = () => {
                 </tr>
               ) : (
                 currentList.map((u) => {
-                  const isFulvio = u.email.toLowerCase().includes('fulvio');
-                  const isInternal = u.userType === 'INTERNAL' || u.email.endsWith('@conciliadorcontabil.com.br');
+                  const isFulvio = u.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+                  const isInternal = u.userType === 'INTERNAL' && u.email.toLowerCase().endsWith('@conciliadorcontabil.com.br');
                   const situation = getUserSituation(u);
 
                   return (
@@ -602,7 +617,7 @@ export const UserManagementView: React.FC = () => {
               style={{
                 height: '6px',
                 width: '100%',
-                background: selectedUserForProfile.email.toLowerCase().includes('fulvio')
+                background: selectedUserForProfile.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br'
                   ? 'linear-gradient(90deg, #5cb780, #6c63ff, #f59e0b)'
                   : 'linear-gradient(90deg, #5cb780, #38bdf8)',
               }}
@@ -654,7 +669,7 @@ export const UserManagementView: React.FC = () => {
                     width: '56px',
                     height: '56px',
                     borderRadius: 'var(--radius-full)',
-                    background: selectedUserForProfile.email.toLowerCase().includes('fulvio')
+                    background: selectedUserForProfile.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br'
                       ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
                       : 'linear-gradient(135deg, #38bdf8 0%, #5cb780 100%)',
                     color: '#ffffff',

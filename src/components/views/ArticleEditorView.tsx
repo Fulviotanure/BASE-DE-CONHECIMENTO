@@ -36,7 +36,11 @@ import {
   AlignRight,
   Maximize2,
   Grid,
-  Video
+  Video,
+  Undo2,
+  Redo2,
+  Palette,
+  Contrast
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
@@ -56,10 +60,29 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
   const [title, setTitle] = useState(editingArticle?.title || '');
   const [categoryId, setCategoryId] = useState(editingArticle?.categoryId || categories[0]?.id || '');
+  const [subcategoryId, setSubcategoryId] = useState(editingArticle?.subcategoryId || '');
   const [tagInput, setTagInput] = useState(editingArticle?.tags.join(', ') || '');
-  const [accessLevel, setAccessLevel] = useState<'INTERNAL' | 'ALL'>(
-    editingArticle?.accessLevel === 'ALL' || editingArticle?.accessLevel === 'EXTERNAL' ? 'ALL' : 'INTERNAL'
+
+  // Verificação de categoria Playbook (sempre restrito a colaboradores internos)
+  const selectedCatObj = categories.find((c) => c.id === categoryId);
+  const isPlaybookCategory = Boolean(
+    categoryId === 'cat-11' ||
+    categoryId === 'cat-12' ||
+    selectedCatObj?.title?.toLowerCase().includes('playbook')
   );
+
+  const [accessLevel, setAccessLevel] = useState<'INTERNAL' | 'ALL'>(() => {
+    if (editingArticle?.categoryId === 'cat-11' || editingArticle?.categoryId === 'cat-12') return 'INTERNAL';
+    return editingArticle?.accessLevel === 'ALL' || editingArticle?.accessLevel === 'EXTERNAL' ? 'ALL' : 'INTERNAL';
+  });
+
+  // Se a categoria selecionada for Playbook, garante que accessLevel seja sempre INTERNAL
+  useEffect(() => {
+    if (isPlaybookCategory && accessLevel !== 'INTERNAL') {
+      setAccessLevel('INTERNAL');
+    }
+  }, [categoryId, isPlaybookCategory]);
+
   const [proposalNote, setProposalNote] = useState(editingArticle?.proposalNote || '');
   const [content, setContent] = useState(
     editingArticle?.contentHtml || ''
@@ -235,14 +258,62 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     }
   };
 
-  // Aplicação de Cor no Texto
+  // Desfazer (Undo / Ctrl+Z) e Refazer (Redo / Ctrl+Y)
+  const handleUndo = () => {
+    if (editorMode === 'VISUAL' && visualEditorRef.current) {
+      visualEditorRef.current.focus();
+      document.execCommand('undo', false);
+      syncFromVisualEditor();
+    } else if (textareaRef.current) {
+      textareaRef.current.focus();
+      document.execCommand('undo', false);
+    }
+  };
+
+  const handleRedo = () => {
+    if (editorMode === 'VISUAL' && visualEditorRef.current) {
+      visualEditorRef.current.focus();
+      document.execCommand('redo', false);
+      syncFromVisualEditor();
+    } else if (textareaRef.current) {
+      textareaRef.current.focus();
+      document.execCommand('redo', false);
+    }
+  };
+
+  // Aplicação de Cor no Texto (com suporte a Cor Padrão / Dinâmica do Tema e Cores Customizadas)
   const applyTextColor = (color: string) => {
     if (editorMode === 'VISUAL' && visualEditorRef.current) {
       visualEditorRef.current.focus();
-      document.execCommand('foreColor', false, color);
+      if (color === 'default' || color === 'dynamic' || color === 'inherit') {
+        // Remove cor forçada inline para que o texto herde dinamicamente o tema (Branco no Escuro, Preto no Claro)
+        document.execCommand('styleWithCSS', false, 'true');
+        document.execCommand('foreColor', false, 'inherit');
+
+        // Limpeza adicional de spans/fonts com style de cor na seleção ativa
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          let parent: Node | null = range.commonAncestorContainer;
+          if (parent.nodeType === Node.TEXT_NODE) parent = parent.parentElement;
+          if (parent && parent !== visualEditorRef.current) {
+            const el = parent as HTMLElement;
+            if (el.style && el.style.color) {
+              el.style.color = '';
+            }
+          }
+        }
+      } else {
+        document.execCommand('styleWithCSS', false, 'true');
+        document.execCommand('foreColor', false, color);
+      }
       syncFromVisualEditor();
     } else {
-      wrapSelection(`<span style="color: ${color}">`, '</span>', 'texto colorido');
+      if (color === 'default' || color === 'dynamic' || color === 'inherit') {
+        wrapSelection('<span class="text-dynamic">', '</span>', 'texto dinâmico');
+      } else {
+        wrapSelection(`<span style="color: ${color}">`, '</span>', 'texto colorido');
+      }
     }
   };
 
@@ -681,6 +752,16 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       .map((t) => t.trim().replace(/^#/, ''))
       .filter(Boolean);
 
+    const selCat = categories.find((c) => c.id === categoryId);
+    const selSubcat = selCat?.subcategories?.find((s) => s.id === subcategoryId);
+    const subcategoryName = selSubcat?.title;
+    const isPb = Boolean(
+      categoryId === 'cat-11' ||
+      categoryId === 'cat-12' ||
+      selCat?.title?.toLowerCase().includes('playbook')
+    );
+    const effectiveAccessLevel = isPb ? 'INTERNAL' : accessLevel;
+
     if (isProposalMode && editingArticle) {
       if (!proposalNote.trim()) {
         alert('Por favor, preencha a justificativa da proposta de edição.');
@@ -692,17 +773,17 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
         categoryId,
         content,
         tags,
-        accessLevel,
+        effectiveAccessLevel,
         proposalNote.trim(),
         attachments
       );
       alert('Proposta de edição submetida com sucesso para a Fila Editorial!');
     } else if (editingArticle) {
-      updateArticleContent(editingArticle.id, title.trim(), categoryId, content, tags, accessLevel, attachments);
-      alert('Artigo atualizado e submetido para validação editorial!');
+      updateArticleContent(editingArticle.id, title.trim(), categoryId, content, tags, effectiveAccessLevel, attachments, subcategoryId, subcategoryName);
+      alert('Artigo atualizado com sucesso!');
     } else {
-      createArticle(title.trim(), categoryId, content, tags, accessLevel, attachments);
-      alert('Artigo criado com sucesso e enviado para a Fila Editorial!');
+      createArticle(title.trim(), categoryId, content, tags, effectiveAccessLevel, attachments, subcategoryId, subcategoryName);
+      alert('Artigo criado com sucesso e adicionado na árvore de navegação!');
     }
 
     onClose();
@@ -819,7 +900,10 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
               </label>
               <select
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  setSubcategoryId('');
+                }}
                 style={{
                   width: '100%',
                   padding: '9px 12px',
@@ -839,6 +923,41 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 ))}
               </select>
             </div>
+
+            {/* Subcategoria em cascata */}
+            {(() => {
+              const currentCat = categories.find((c) => c.id === categoryId);
+              if (!currentCat?.subcategories || currentCat.subcategories.length === 0) return null;
+              return (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Subcategoria / Ramo da Árvore:
+                  </label>
+                  <select
+                    value={subcategoryId}
+                    onChange={(e) => setSubcategoryId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.88rem',
+                      color: 'var(--text-main)',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">Geral (Direto na Categoria)</option>
+                    {currentCat.subcategories.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Proposta de Edição Justification */}
@@ -902,21 +1021,36 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAccessLevel('ALL')}
+                  onClick={() => {
+                    if (!isPlaybookCategory) {
+                      setAccessLevel('ALL');
+                    }
+                  }}
+                  disabled={isPlaybookCategory}
+                  title={isPlaybookCategory ? 'Módulos Playbook são exclusivos para colaboradores internos e não podem ser externos.' : undefined}
                   style={{
                     flex: 1,
                     padding: '8px 10px',
                     borderRadius: 'var(--radius-md)',
-                    border: `1px solid ${accessLevel === 'ALL' ? '#38bdf8' : 'var(--border-subtle)'}`,
-                    background: accessLevel === 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-input)',
-                    color: accessLevel === 'ALL' ? '#38bdf8' : 'var(--text-muted)',
+                    border: `1px solid ${accessLevel === 'ALL' && !isPlaybookCategory ? '#38bdf8' : 'var(--border-subtle)'}`,
+                    background: isPlaybookCategory
+                      ? 'rgba(255, 255, 255, 0.03)'
+                      : accessLevel === 'ALL'
+                      ? 'rgba(56, 189, 248, 0.15)'
+                      : 'var(--bg-input)',
+                    color: isPlaybookCategory
+                      ? 'var(--text-subtle)'
+                      : accessLevel === 'ALL'
+                      ? '#38bdf8'
+                      : 'var(--text-muted)',
                     fontWeight: 700,
                     fontSize: '0.82rem',
-                    cursor: 'pointer',
+                    cursor: isPlaybookCategory ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
+                    opacity: isPlaybookCategory ? 0.45 : 1,
                     transition: 'all 0.15s ease',
                   }}
                 >
@@ -924,6 +1058,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                   <span>Externo (Clientes)</span>
                 </button>
               </div>
+              {isPlaybookCategory && (
+                <span style={{ display: 'block', fontSize: '0.70rem', color: '#f59e0b', marginTop: '4px', fontWeight: 600 }}>
+                  🔒 Playbooks são restritos à equipe interna e não podem ser compartilhados com clientes.
+                </span>
+              )}
             </div>
 
             {/* Tags */}
@@ -1334,40 +1473,121 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 </select>
               </div>
 
-              {/* Paleta de Cores */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600, marginRight: '2px' }}>Cor:</span>
-                {[
-                  { color: '#5cb780', title: 'Verde Conciliador' },
-                  { color: '#38bdf8', title: 'Azul Info' },
-                  { color: '#f59e0b', title: 'Âmbar Alerta' },
-                  { color: '#ef4444', title: 'Vermelho Crítico' },
-                  { color: '#a855f7', title: 'Roxo Destaque' },
-                  { color: '#ffffff', title: 'Branco' },
-                ].map((c) => (
-                  <button
-                    key={c.color}
-                    type="button"
-                    onClick={() => applyTextColor(c.color)}
-                    title={c.title}
+              {/* Paleta de Cores e Cor Dinâmica */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600 }}>Cor:</span>
+
+                {/* Opção 1: Cor Padrão / Dinâmica (Adapta ao tema claro/escuro) */}
+                <button
+                  type="button"
+                  onClick={() => applyTextColor('dynamic')}
+                  title="Cor Dinâmica Padrão (Branco no Modo Escuro, Preto no Modo Claro)"
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    padding: '3px 8px',
+                    fontSize: '0.73rem',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-main)',
+                  }}
+                >
+                  <Contrast size={13} color="var(--color-primary)" />
+                  <span>Padrão Dinâmico</span>
+                </button>
+
+                {/* Cores Pré-definidas */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {[
+                    { color: '#5cb780', title: 'Verde Conciliador' },
+                    { color: '#38bdf8', title: 'Azul Info' },
+                    { color: '#f59e0b', title: 'Âmbar Alerta' },
+                    { color: '#ef4444', title: 'Vermelho Crítico' },
+                    { color: '#a855f7', title: 'Roxo Destaque' },
+                    { color: '#94a3b8', title: 'Cinza Suave' },
+                  ].map((c) => (
+                    <button
+                      key={c.color}
+                      type="button"
+                      onClick={() => applyTextColor(c.color)}
+                      title={c.title}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: c.color,
+                        border: '1px solid rgba(255,255,255,0.25)',
+                        cursor: 'pointer',
+                        transition: 'transform 0.1s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.25)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    />
+                  ))}
+                </div>
+
+                {/* Seletor Livre de Cor Personalizada */}
+                <label
+                  title="Selecionar Qualquer Cor Personalizada"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }}
+                >
+                  <input
+                    type="color"
+                    onChange={(e) => applyTextColor(e.target.value)}
                     style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '50%',
-                      background: c.color,
-                      border: '1px solid rgba(255,255,255,0.2)',
+                      position: 'absolute',
+                      opacity: 0,
+                      width: '100%',
+                      height: '100%',
                       cursor: 'pointer',
-                      transition: 'transform 0.1s',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                   />
-                ))}
+                </label>
               </div>
             </div>
 
             {/* Linha Inferior: Formatações de Estilo & Callouts & Tabela & Imagens */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px' }}>
+              {/* Desfazer (Ctrl+Z) e Refazer (Ctrl+Y) */}
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button
+                  type="button"
+                  onClick={handleUndo}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '4px 8px' }}
+                  title="Desfazer (Ctrl+Z)"
+                >
+                  <Undo2 size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRedo}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '4px 8px' }}
+                  title="Refazer (Ctrl+Y / Ctrl+Shift+Z)"
+                >
+                  <Redo2 size={13} />
+                </button>
+              </div>
+
+              <div style={{ width: '1px', height: '18px', background: 'var(--border-subtle)', margin: '0 2px' }} />
+
               {/* Negrito, Itálico, Sublinhado, Riscado */}
               <div style={{ display: 'flex', gap: '2px' }}>
                 <button

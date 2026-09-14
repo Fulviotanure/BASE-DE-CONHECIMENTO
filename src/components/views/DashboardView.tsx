@@ -13,7 +13,21 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const DashboardView: React.FC = () => {
-  const { articles, getUserPerformances } = useApp();
+  const { articles, getUserPerformances, currentUser } = useApp();
+
+  const isCorporate = Boolean(currentUser?.email?.toLowerCase().endsWith('@conciliadorcontabil.com.br'));
+  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL' || !isCorporate;
+
+  if (isExternal) {
+    return (
+      <div style={{ padding: '60px 24px', textAlign: 'center', width: '100%' }}>
+        <h2 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Área Restrita a Colaboradores Internos</h2>
+        <p style={{ color: 'var(--text-muted)' }}>
+          O Painel de Auditoria e Dashboard Analítico não está disponível para clientes ou usuários externos.
+        </p>
+      </div>
+    );
+  }
 
   const total = articles.length;
   const pending = articles.filter((a) => a.currentStatus === 'PENDING').length;
@@ -23,7 +37,10 @@ export const DashboardView: React.FC = () => {
 
   const globalConversionRate = total > 0 ? Math.round((approved / total) * 100) : 0;
 
-  const performances = getUserPerformances();
+  // Garante estritamente apenas colaboradores da equipe interna
+  const performances = getUserPerformances().filter((p) =>
+    p.userEmail.toLowerCase().endsWith('@conciliadorcontabil.com.br')
+  );
 
   return (
     <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto', width: '100%' }} className="animate-fade-in">

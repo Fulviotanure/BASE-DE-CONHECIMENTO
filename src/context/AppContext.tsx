@@ -25,7 +25,8 @@ import {
   subscribeTools, 
   saveToolToFirestore, 
   subscribeCategories,
-  seedFirestoreWithMovideskData
+  seedFirestoreWithMovideskData,
+  seedUsersToFirestore
 } from '../services/firestoreService';
 
 interface AppContextType {
@@ -82,7 +83,9 @@ interface AppContextType {
     contentHtml: string, 
     tags: string[], 
     accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
-    attachments?: { id: string; name: string; size: string; url?: string }[]
+    attachments?: { id: string; name: string; size: string; url?: string }[],
+    subcategoryId?: string,
+    subcategoryName?: string
   ) => void;
   updateArticleContent: (
     articleId: string, 
@@ -91,7 +94,9 @@ interface AppContextType {
     contentHtml: string, 
     tags: string[], 
     accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
-    attachments?: { id: string; name: string; size: string; url?: string }[]
+    attachments?: { id: string; name: string; size: string; url?: string }[],
+    subcategoryId?: string,
+    subcategoryName?: string
   ) => void;
   submitReview: (
     articleId: string, 
@@ -164,15 +169,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
-  // Estado fixo de Super Administrador (Fulvio permanece com o switcher liberado permanentemente)
+  // Estado fixo de Super Administrador (Apenas a conta corporativa oficial fulvio@conciliadorcontabil.com.br)
+  const isExactSuperAdmin = (email?: string | null) => {
+    return email?.trim().toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+  };
+
   const [isPermanentSuperAdmin, setIsPermanentSuperAdmin] = useState<boolean>(() => {
-    const savedAdmin = localStorage.getItem('conciliador_is_superadmin');
-    if (savedAdmin === 'true') return true;
     const saved = localStorage.getItem('conciliador_current_user_v3');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed.email?.toLowerCase().includes('fulvio');
+        return isExactSuperAdmin(parsed.email);
       } catch {
         return false;
       }
@@ -181,9 +188,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   useEffect(() => {
-    if (currentUser?.email?.toLowerCase().includes('fulvio')) {
+    if (isExactSuperAdmin(currentUser?.email)) {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
+    } else {
+      setIsPermanentSuperAdmin(false);
+      localStorage.removeItem('conciliador_is_superadmin');
     }
   }, [currentUser]);
 
@@ -263,11 +273,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 3. Ouvinte de Usuários Firestore
+    // 3. Ouvinte de Usuários Firestore (com normalização e merge corporativo)
     const unsubUsers = subscribeUsers((remoteUsers) => {
-      if (remoteUsers.length > 0) {
-        setUsers(remoteUsers);
-      }
+      const normalizedRemoteUsers = remoteUsers.map((u) => {
+        const isCorp = Boolean(u.email && u.email.trim().toLowerCase().endsWith('@conciliadorcontabil.com.br'));
+        return {
+          ...u,
+          userType: isCorp ? ('INTERNAL' as const) : ('EXTERNAL' as const),
+          role: !isCorp && (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') ? ('READER' as const) : u.role,
+        };
+      });
+
+      const remoteEmailMap = new Map<string, UserProfile>();
+      normalizedRemoteUsers.forEach((u) => {
+        if (u.email) {
+          remoteEmailMap.set(u.email.toLowerCase().trim(), u);
+        }
+      });
+
+      const merged: UserProfile[] = [...normalizedRemoteUsers];
+      INITIAL_USERS.forEach((initU) => {
+        if (!remoteEmailMap.has(initU.email.toLowerCase().trim())) {
+          merged.push(initU);
+        }
+      });
+
+      setUsers(merged);
     });
 
     // 4. Ouvinte de Ferramentas Firestore
@@ -280,9 +311,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 5. Ouvinte de Categorias Firestore
     const unsubCategories = subscribeCategories((remoteCategories) => {
       if (remoteCategories.length > 0) {
-        setCategories(remoteCategories);
+        const existingIds = new Set(remoteCategories.map((c) => c.id));
+        const missingInitial = INITIAL_CATEGORIES.filter((c) => !existingIds.has(c.id));
+        setCategories([...remoteCategories, ...missingInitial].sort((a, b) => a.orderIndex - b.orderIndex));
       }
     });
+
+    // 6. Seed de usuários iniciais no Firestore (roda uma vez, não sobrescreve existentes)
+    seedUsersToFirestore().catch((e) => console.warn('Seed de usuários falhou:', e));
 
     return () => {
       unsubAuth();
@@ -341,9 +377,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((u) => (u.uid === user.uid ? updatedUser : u))
     );
     setCurrentUser(updatedUser);
-    if (user.email.toLowerCase().includes('fulvio')) {
+    if (user.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br') {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
+    } else {
+      setIsPermanentSuperAdmin(false);
+      localStorage.removeItem('conciliador_is_superadmin');
     }
     setIsAuthModalOpen(false);
   };
@@ -353,9 +392,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isFirebaseConfigured) {
         const res = await loginWithGoogle();
         setCurrentUser(res.user);
-        if (res.user.email.toLowerCase().includes('fulvio')) {
+        if (res.user.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br') {
           setIsPermanentSuperAdmin(true);
           localStorage.setItem('conciliador_is_superadmin', 'true');
+        } else {
+          setIsPermanentSuperAdmin(false);
+          localStorage.removeItem('conciliador_is_superadmin');
         }
         setIsRealFirebaseAuth(true);
         setIsAuthModalOpen(false);
@@ -363,8 +405,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         const targetEmail = (customEmail || 'fulvio@conciliadorcontabil.com.br').toLowerCase();
         let user = users.find((u) => u.email.toLowerCase() === targetEmail);
-        const isCorp = targetEmail.endsWith('@conciliadorcontabil.com.br') || targetEmail.includes('fulvio');
-        const isFulvio = targetEmail.includes('fulvio');
+        const isCorp = targetEmail.endsWith('@conciliadorcontabil.com.br');
+        const isFulvio = targetEmail === 'fulvio@conciliadorcontabil.com.br';
 
         if (!user) {
           user = {
@@ -390,6 +432,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isFulvio) {
           setIsPermanentSuperAdmin(true);
           localStorage.setItem('conciliador_is_superadmin', 'true');
+        } else {
+          setIsPermanentSuperAdmin(false);
+          localStorage.removeItem('conciliador_is_superadmin');
         }
         setIsAuthModalOpen(false);
         return { success: true, user };
@@ -404,16 +449,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pass: string
   ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
-    const isCorp = cleanEmail.endsWith('@conciliadorcontabil.com.br') || cleanEmail.includes('fulvio');
-    const isFulvio = cleanEmail.includes('fulvio');
+    const isCorp = cleanEmail.endsWith('@conciliadorcontabil.com.br');
+    const isFulvio = cleanEmail === 'fulvio@conciliadorcontabil.com.br';
 
     if (isFirebaseConfigured) {
       try {
         const res = await loginWithEmailPassword(cleanEmail, pass);
         setCurrentUser(res.user);
-        if (res.user.email.toLowerCase().includes('fulvio')) {
+        if (res.user.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br') {
           setIsPermanentSuperAdmin(true);
           localStorage.setItem('conciliador_is_superadmin', 'true');
+        } else {
+          setIsPermanentSuperAdmin(false);
+          localStorage.removeItem('conciliador_is_superadmin');
         }
         setIsRealFirebaseAuth(true);
         return { success: true, user: res.user };
@@ -452,6 +500,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isFulvio) {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
+    } else {
+      setIsPermanentSuperAdmin(false);
+      localStorage.removeItem('conciliador_is_superadmin');
     }
     return { success: true, user };
   };
@@ -713,9 +764,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     title: string, 
     categoryId: string, 
     contentHtml: string, 
-    tags: string[],
+    tags: string[], 
     accessLevel: 'INTERNAL' | 'EXTERNAL' | 'ALL' = 'INTERNAL',
-    attachments?: { id: string; name: string; size: string; url?: string }[]
+    attachments?: { id: string; name: string; size: string; url?: string }[],
+    subcategoryId?: string,
+    subcategoryName?: string
   ) => {
     const cat = categories.find((c) => c.id === categoryId);
 
@@ -730,6 +783,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const maxNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 100;
     const nextCode = `CC-${maxNum + 1}`;
 
+    const isPrivileged =
+      currentUser?.role === 'SUPER_ADMIN' ||
+      currentUser?.role === 'ADMIN' ||
+      currentUser?.email?.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+
+    const subcat = cat?.subcategories?.find((s) => s.id === subcategoryId);
+
     const newArt: Article = {
       id: `art-${Date.now()}`,
       code: nextCode,
@@ -737,10 +797,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
       categoryId,
       categoryName: cat?.title || 'Geral',
+      subcategoryId: subcategoryId || undefined,
+      subcategoryName: subcategoryName || subcat?.title || undefined,
       authorId: currentUser?.uid || 'usr-fulvio',
       authorName: currentUser?.displayName || 'Fulvio Tanure',
       authorEmail: currentUser?.email || 'fulvio@conciliadorcontabil.com.br',
-      currentStatus: 'PENDING',
+      currentStatus: isPrivileged ? 'APPROVED' : 'PENDING',
       accessLevel,
       tags,
       viewCount: 0,
@@ -770,13 +832,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     contentHtml: string,
     tags: string[],
     accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
-    attachments?: { id: string; name: string; size: string; url?: string }[]
+    attachments?: { id: string; name: string; size: string; url?: string }[],
+    subcategoryId?: string,
+    subcategoryName?: string
   ) => {
     const cat = categories.find((c) => c.id === categoryId);
+    const subcat = cat?.subcategories?.find((s) => s.id === subcategoryId);
     const updates: Partial<Article> = {
       title,
       categoryId,
       categoryName: cat?.title,
+      subcategoryId: subcategoryId || undefined,
+      subcategoryName: subcategoryName || subcat?.title || undefined,
       contentHtml,
       tags,
       currentStatus: 'PENDING',
@@ -971,27 +1038,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Métricas
+  // Métricas de Desempenho Editorial (Estritamente Colaboradores Internos da Conciliador Contábil)
   const getUserPerformances = (): UserPerformance[] => {
-    return users.map((u) => {
-      const userArticles = articles.filter((a) => a.authorEmail.toLowerCase() === u.email.toLowerCase());
-      const submittedCount = userArticles.length;
-      const approvedCount = userArticles.filter((a) => a.currentStatus === 'APPROVED').length;
-      const adjustmentCount = userArticles.filter((a) => a.currentStatus === 'IN_ADJUSTMENT').length;
-      const rejectedCount = userArticles.filter((a) => a.currentStatus === 'REJECTED').length;
-      const conversionRate = submittedCount > 0 ? Math.round((approvedCount / submittedCount) * 100) : 0;
+    return users
+      .filter((u) => {
+        const isClient =
+          u.role === 'READER' ||
+          u.userType === 'EXTERNAL' ||
+          !u.email.toLowerCase().endsWith('@conciliadorcontabil.com.br');
+        return !isClient;
+      })
+      .map((u) => {
+        const userArticles = articles.filter((a) => a.authorEmail.toLowerCase() === u.email.toLowerCase());
+        const submittedCount = userArticles.length;
+        const approvedCount = userArticles.filter((a) => a.currentStatus === 'APPROVED').length;
+        const adjustmentCount = userArticles.filter((a) => a.currentStatus === 'IN_ADJUSTMENT').length;
+        const rejectedCount = userArticles.filter((a) => a.currentStatus === 'REJECTED').length;
+        const conversionRate = submittedCount > 0 ? Math.round((approvedCount / submittedCount) * 100) : 0;
 
-      return {
-        userId: u.uid,
-        userName: u.displayName,
-        userEmail: u.email,
-        submittedCount,
-        approvedCount,
-        adjustmentCount,
-        rejectedCount,
-        conversionRate,
-      };
-    });
+        return {
+          userId: u.uid,
+          userName: u.displayName,
+          userEmail: u.email,
+          submittedCount,
+          approvedCount,
+          adjustmentCount,
+          rejectedCount,
+          conversionRate,
+        };
+      });
   };
 
   const saveFirebaseKeys = (config: FirebaseConfig) => {
