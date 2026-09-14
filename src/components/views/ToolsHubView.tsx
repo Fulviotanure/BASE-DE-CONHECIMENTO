@@ -433,7 +433,7 @@ export const ToolsHubView: React.FC = () => {
                 <input
                   type="url"
                   required
-                  placeholder="https://downloads.conciliadorcontabil.com.br/software.exe"
+                  placeholder="https://pub-47b999e464d143b8a140a73baf6ef575.r2.dev/software.exe"
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
                   style={{
@@ -445,6 +445,24 @@ export const ToolsHubView: React.FC = () => {
                     fontSize: '0.85rem',
                   }}
                 />
+                <div style={{ marginTop: '5px', fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Armazenamento Cloudflare R2</span>
+                  <button
+                    type="button"
+                    onClick={() => setTargetUrl('https://pub-47b999e464d143b8a140a73baf6ef575.r2.dev/')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--color-primary)',
+                      cursor: 'pointer',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Inserir prefixo do Cloudflare R2
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
