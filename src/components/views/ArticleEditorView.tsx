@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileEdit,
   Send,
@@ -18,6 +18,10 @@ import {
   CheckSquare2,
   Lock,
   Globe,
+  Image as ImageIcon,
+  Upload,
+  Link2,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
@@ -49,6 +53,119 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
   const [previewMode, setPreviewMode] = useState(false);
   const [resolvedChecklist, setResolvedChecklist] = useState<Record<string, boolean>>({});
+
+  // Estados para Upload & Inserção de Imagens
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imageSource, setImageSource] = useState<'UPLOAD' | 'URL'>('UPLOAD');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [imageCaption, setImageCaption] = useState('');
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Compressão inteligente para WebP de alto desempenho
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 1280;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(event.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedUrl = canvas.toDataURL('image/webp', 0.85);
+          resolve(compressedUrl);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
+  const insertImageHtml = (src: string, caption: string) => {
+    const figureHtml = `\n<figure style="margin: 24px auto; text-align: center; max-width: 100%;">\n  <img src="${src}" alt="${caption || 'Imagem do procedimento'}" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-subtle); box-shadow: 0 4px 16px rgba(0,0,0,0.25);" />\n${caption ? `  <figcaption style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; font-style: italic;">${caption}</figcaption>\n` : ''}</figure>\n`;
+    setContent((prev) => prev + figureHtml);
+  };
+
+  // Permite colar print de tela (Ctrl + V) diretamente na caixa de edição
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          try {
+            setToastMsg('📸 Processando print colado...');
+            const compressed = await compressImage(file);
+            insertImageHtml(compressed, 'Screenshot anexado');
+            setToastMsg('✅ Print de tela inserido no artigo com sucesso!');
+            setTimeout(() => setToastMsg(null), 3000);
+          } catch (err) {
+            console.error('Erro ao processar imagem colada:', err);
+            setToastMsg('Erro ao processar imagem colada.');
+            setTimeout(() => setToastMsg(null), 3000);
+          }
+          return;
+        }
+      }
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingImage(true);
+    try {
+      const compressed = await compressImage(file);
+      setImagePreview(compressed);
+    } catch (err) {
+      console.error('Erro ao comprimir imagem:', err);
+      alert('Erro ao carregar imagem.');
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
+  const handleConfirmInsertImage = () => {
+    const finalUrl = imageSource === 'UPLOAD' ? imagePreview : imageUrlInput.trim();
+    if (!finalUrl) {
+      alert('Por favor, selecione uma imagem ou informe a URL.');
+      return;
+    }
+
+    insertImageHtml(finalUrl, imageCaption.trim());
+    setIsImageModalOpen(false);
+    setImagePreview(null);
+    setImageUrlInput('');
+    setImageCaption('');
+    setToastMsg('✅ Imagem inserida no artigo com sucesso!');
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   // Obter a última revisão se o artigo estiver em ajuste
   const latestReview = editingArticle?.reviews?.[0];
@@ -401,6 +518,47 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 <List size={13} />
                 <span>Lista Passo a Passo</span>
               </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setIsImageModalOpen(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  color: '#38bdf8',
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  borderColor: 'rgba(56, 189, 248, 0.35)',
+                  fontWeight: 700,
+                }}
+              >
+                <ImageIcon size={13} color="#38bdf8" />
+                <span>Inserir Imagem / Print</span>
+              </button>
+            </div>
+          )}
+
+          {/* Toast informativo de Imagem Anexada */}
+          {toastMsg && (
+            <div
+              className="animate-fade-in"
+              style={{
+                background: 'rgba(56, 189, 248, 0.15)',
+                border: '1px solid rgba(56, 189, 248, 0.35)',
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-sm)',
+                margin: '8px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#38bdf8',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+              }}
+            >
+              <CheckCircle2 size={15} />
+              <span>{toastMsg}</span>
             </div>
           )}
 
@@ -422,7 +580,8 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="Escreva seu artigo aqui em formato HTML ou texto estruturado..."
+              onPaste={handlePaste}
+              placeholder="Escreva seu artigo aqui... Dica: Você pode colar prints de tela (Ctrl + V) diretamente aqui ou clicar em 'Inserir Imagem / Print' acima!"
               style={{
                 flex: 1,
                 minHeight: '380px',
@@ -551,6 +710,345 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal de Inserção de Imagem / Print */}
+      {isImageModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+          onClick={() => setIsImageModalOpen(false)}
+        >
+          <div
+            className="animate-fade-in"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              maxWidth: '540px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: 'var(--shadow-xl)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#38bdf8',
+                  }}
+                >
+                  <ImageIcon size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>
+                    Inserir Imagem / Print no Artigo
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Suba imagens do seu computador ou vincule URLs do Cloudflare R2
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImageModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div
+              style={{
+                display: 'flex',
+                background: 'var(--bg-input)',
+                borderRadius: 'var(--radius-md)',
+                padding: '3px',
+                marginBottom: '18px',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setImageSource('UPLOAD')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  background: imageSource === 'UPLOAD' ? 'var(--bg-card)' : 'transparent',
+                  color: imageSource === 'UPLOAD' ? 'var(--text-main)' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: imageSource === 'UPLOAD' ? 'var(--shadow-sm)' : 'none',
+                }}
+              >
+                <Upload size={14} />
+                <span>Subir Imagem / Print</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageSource('URL')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  background: imageSource === 'URL' ? 'var(--bg-card)' : 'transparent',
+                  color: imageSource === 'URL' ? 'var(--text-main)' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: imageSource === 'URL' ? 'var(--shadow-sm)' : 'none',
+                }}
+              >
+                <Link2 size={14} />
+                <span>URL / Cloudflare R2</span>
+              </button>
+            </div>
+
+            {/* Tab 1: Upload / Arquivo local */}
+            {imageSource === 'UPLOAD' && (
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                />
+
+                {!imagePreview ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: '2px dashed var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '32px 16px',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      background: 'var(--bg-card)',
+                      transition: 'border-color 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+                  >
+                    <Upload size={32} color="var(--color-primary)" style={{ margin: '0 auto 10px auto' }} />
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-main)' }}>
+                      Clique para escolher imagem ou print do seu computador
+                    </p>
+                    <p style={{ margin: '6px 0 0 0', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                      PNG, JPG, GIF ou WebP (otimização e compressão automática)
+                    </p>
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        display: 'inline-block',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'rgba(56, 189, 248, 0.1)',
+                        color: '#38bdf8',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      💡 Dica: Você também pode colar prints com <strong>Ctrl + V</strong> direto no texto!
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      position: 'relative',
+                      borderRadius: 'var(--radius-md)',
+                      overflow: 'hidden',
+                      border: '1px solid var(--border-subtle)',
+                      background: '#000',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <img
+                      src={imagePreview}
+                      alt="Prévia selecionada"
+                      style={{ maxHeight: '220px', maxWidth: '100%', objectFit: 'contain' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImagePreview(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        border: 'none',
+                        color: '#fff',
+                        borderRadius: '50%',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
+                {isProcessingImage && (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--color-primary)', marginTop: '8px' }}>
+                    Processando e comprimindo imagem...
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: URL / Cloudflare R2 */}
+            {imageSource === 'URL' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  URL Pública da Imagem:
+                </label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <input
+                    type="url"
+                    placeholder="https://pub-47b999e464d143b8a140a73baf6ef575.r2.dev/minha-imagem.png"
+                    value={imageUrlInput}
+                    onChange={(e) => setImageUrlInput(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.82rem',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setImageUrlInput('https://pub-47b999e464d143b8a140a73baf6ef575.r2.dev/')}
+                    style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}
+                  >
+                    Prefixo R2
+                  </button>
+                </div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'block', marginBottom: '12px' }}>
+                  Bucket R2 configurado: <code>https://pub-47b999e464d143b8a140a73baf6ef575.r2.dev/</code>
+                </span>
+
+                {imageUrlInput && (
+                  <div
+                    style={{
+                      borderRadius: 'var(--radius-md)',
+                      overflow: 'hidden',
+                      border: '1px solid var(--border-subtle)',
+                      background: '#000',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <img
+                      src={imageUrlInput}
+                      alt="Prévia por URL"
+                      onError={() => {}}
+                      style={{ maxHeight: '180px', maxWidth: '100%', objectFit: 'contain' }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Legenda / Caption */}
+            <div style={{ marginTop: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                Legenda / Descrição da Imagem (Opcional):
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Tela de configuração de parâmetros no Domínio Sistemas"
+                value={imageCaption}
+                onChange={(e) => setImageCaption(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.82rem',
+                }}
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setIsImageModalOpen(false);
+                  setImagePreview(null);
+                  setImageUrlInput('');
+                  setImageCaption('');
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleConfirmInsertImage}
+                disabled={imageSource === 'UPLOAD' ? !imagePreview : !imageUrlInput.trim()}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  opacity: (imageSource === 'UPLOAD' ? !imagePreview : !imageUrlInput.trim()) ? 0.5 : 1,
+                }}
+              >
+                <ImageIcon size={14} />
+                <span>Inserir no Artigo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
