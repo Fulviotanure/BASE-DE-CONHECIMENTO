@@ -77,11 +77,15 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageCaption, setImageCaption] = useState('');
+  const [imageInsertWidth, setImageInsertWidth] = useState<number>(100);
+  const [imageInsertAlign, setImageInsertAlign] = useState<'center' | 'left' | 'right'>('center');
 
   // Modal para Inserção de Vídeos por Link
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoCaption, setVideoCaption] = useState('');
+  const [videoInsertWidth, setVideoInsertWidth] = useState<number>(100);
+  const [videoInsertAlign, setVideoInsertAlign] = useState<'center' | 'left' | 'right'>('center');
 
   // Dropdown e Grid Interativo de Criação de Tabela por Mouse
   const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
@@ -92,6 +96,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [selectedImageWidth, setSelectedImageWidth] = useState<number>(100);
   const [selectedImageAlign, setSelectedImageAlign] = useState<'center' | 'left' | 'right'>('center');
+
+  // Vídeo Selecionado para Redimensionamento e Alinhamento
+  const [selectedVideoElement, setSelectedVideoElement] = useState<HTMLElement | null>(null);
+  const [selectedVideoWidth, setSelectedVideoWidth] = useState<number>(100);
+  const [selectedVideoAlign, setSelectedVideoAlign] = useState<'center' | 'left' | 'right'>('center');
 
   // Conversa com o Revisor
   const [creatorReplyInput, setCreatorReplyInput] = useState('');
@@ -278,8 +287,13 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     insertHtmlAtCursor(html);
   };
 
-  // Helper para Inserção de Vídeo por Link (YouTube, Vimeo ou MP4)
-  const getEmbedVideoHtml = (url: string, caption?: string) => {
+  // Helper para Inserção de Vídeo por Link (YouTube, Vimeo ou MP4) com Tamanho e Alinhamento
+  const getEmbedVideoHtml = (
+    url: string,
+    caption?: string,
+    widthPercent: number = 100,
+    align: 'center' | 'left' | 'right' = 'center'
+  ) => {
     const trimmed = url.trim();
     let embedUrl = '';
 
@@ -295,6 +309,13 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       }
     }
 
+    let figureStyle = `width: ${widthPercent}%; margin: 20px auto; text-align: center; display: block;`;
+    if (align === 'left') {
+      figureStyle = `width: ${widthPercent}%; float: left; margin: 10px 20px 20px 0; text-align: left; display: block;`;
+    } else if (align === 'right') {
+      figureStyle = `width: ${widthPercent}%; float: right; margin: 10px 0 20px 20px; text-align: right; display: block;`;
+    }
+
     let videoPlayerHtml = '';
     if (embedUrl) {
       videoPlayerHtml = `
@@ -305,7 +326,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     } else {
       // Vídeo direto (ex: .mp4, .webm)
       videoPlayerHtml = `
-        <div style="margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000;">
+        <div style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000;">
           <video controls style="width: 100%; max-height: 480px; display: block; border-radius: 8px;" src="${trimmed}">
             Seu navegador não suporta a tag de vídeo. Link: <a href="${trimmed}" target="_blank" rel="noopener noreferrer">${trimmed}</a>
           </video>
@@ -314,16 +335,16 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     }
 
     return `
-      <figure class="article-video-figure" style="margin: 20px 0; text-align: center;">
+      <figure class="article-video-figure" data-align="${align}" style="${figureStyle}">
         ${videoPlayerHtml}
-        ${caption ? `<figcaption style="font-size: 0.82rem; color: var(--text-subtle); margin-top: 8px; text-align: center;">${caption}</figcaption>` : ''}
+        ${caption ? `<figcaption style="font-size: 0.82rem; color: var(--text-subtle); margin-top: 8px;">${caption}</figcaption>` : ''}
       </figure><p><br></p>
     `;
   };
 
   const handleConfirmVideoUrl = () => {
     if (!videoUrl.trim()) return;
-    const html = getEmbedVideoHtml(videoUrl, videoCaption);
+    const html = getEmbedVideoHtml(videoUrl, videoCaption, videoInsertWidth, videoInsertAlign);
     insertHtmlAtCursor(html);
     setVideoUrl('');
     setVideoCaption('');
@@ -440,16 +461,19 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     e.preventDefault();
   };
 
-  // Clique no editor visual (detecta clique em imagem para abrir opções de redimensionamento e alinhamento)
+  // Clique no editor visual (detecta clique em imagem ou vídeo para abrir opções de redimensionamento e alinhamento)
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // 1. Detectar clique em Imagem
     if (target.tagName === 'IMG') {
       const img = target as HTMLImageElement;
-      visualEditorRef.current?.querySelectorAll('img.img-selected').forEach((el) => {
-        el.classList.remove('img-selected');
+      visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
+        el.classList.remove('img-selected', 'video-selected');
       });
       img.classList.add('img-selected');
       setSelectedImage(img);
+      setSelectedVideoElement(null);
 
       const wStr = img.style.width;
       if (wStr && wStr.endsWith('%')) {
@@ -461,13 +485,44 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       if (img.style.float === 'left') setSelectedImageAlign('left');
       else if (img.style.float === 'right') setSelectedImageAlign('right');
       else setSelectedImageAlign('center');
-    } else {
-      if (!target.closest('.image-floating-toolbar')) {
-        visualEditorRef.current?.querySelectorAll('img.img-selected').forEach((el) => {
-          el.classList.remove('img-selected');
-        });
-        setSelectedImage(null);
+      return;
+    }
+
+    // 2. Detectar clique em Vídeo (figure, container, video ou iframe)
+    const videoFigure = (target.closest('.article-video-figure') ||
+      target.closest('.video-container') ||
+      (target.tagName === 'VIDEO' ? target.closest('.article-video-figure') || target : null) ||
+      (target.tagName === 'IFRAME' ? target.closest('.article-video-figure') || target : null)) as HTMLElement | null;
+
+    if (videoFigure) {
+      visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
+        el.classList.remove('img-selected', 'video-selected');
+      });
+      videoFigure.classList.add('video-selected');
+      setSelectedVideoElement(videoFigure);
+      setSelectedImage(null);
+
+      const wStr = videoFigure.style.width;
+      if (wStr && wStr.endsWith('%')) {
+        setSelectedVideoWidth(parseInt(wStr, 10));
+      } else {
+        setSelectedVideoWidth(100);
       }
+
+      const alignAttr = videoFigure.getAttribute('data-align');
+      if (alignAttr === 'left' || videoFigure.style.float === 'left') setSelectedVideoAlign('left');
+      else if (alignAttr === 'right' || videoFigure.style.float === 'right') setSelectedVideoAlign('right');
+      else setSelectedVideoAlign('center');
+      return;
+    }
+
+    // 3. Clique fora: desmarcar se não foi em nenhuma das barras flutuantes
+    if (!target.closest('.image-floating-toolbar') && !target.closest('.video-floating-toolbar')) {
+      visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
+        el.classList.remove('img-selected', 'video-selected');
+      });
+      setSelectedImage(null);
+      setSelectedVideoElement(null);
     }
   };
 
@@ -512,6 +567,47 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     syncFromVisualEditor();
   };
 
+  // Alinhar Vídeo Selecionado (Centro, Esquerda, Direita)
+  const alignSelectedVideo = (align: 'center' | 'left' | 'right') => {
+    if (!selectedVideoElement) return;
+    setSelectedVideoAlign(align);
+    selectedVideoElement.setAttribute('data-align', align);
+
+    if (align === 'center') {
+      selectedVideoElement.style.display = 'block';
+      selectedVideoElement.style.margin = '20px auto';
+      selectedVideoElement.style.float = 'none';
+      selectedVideoElement.style.textAlign = 'center';
+    } else if (align === 'left') {
+      selectedVideoElement.style.display = 'block';
+      selectedVideoElement.style.float = 'left';
+      selectedVideoElement.style.margin = '10px 20px 20px 0';
+      selectedVideoElement.style.textAlign = 'left';
+    } else if (align === 'right') {
+      selectedVideoElement.style.display = 'block';
+      selectedVideoElement.style.float = 'right';
+      selectedVideoElement.style.margin = '10px 0 20px 20px';
+      selectedVideoElement.style.textAlign = 'right';
+    }
+    syncFromVisualEditor();
+  };
+
+  // Redimensionar Vídeo Selecionado
+  const applyVideoWidth = (pct: number) => {
+    if (!selectedVideoElement) return;
+    setSelectedVideoWidth(pct);
+    selectedVideoElement.style.width = `${pct}%`;
+    syncFromVisualEditor();
+  };
+
+  // Remover Vídeo Selecionado
+  const removeSelectedVideo = () => {
+    if (!selectedVideoElement) return;
+    selectedVideoElement.remove();
+    setSelectedVideoElement(null);
+    syncFromVisualEditor();
+  };
+
   // Upload e Inserção de Imagem por Arquivo
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -519,7 +615,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      insertImageElement(base64, file.name);
+      insertImageElement(base64, file.name, imageInsertAlign, imageInsertWidth);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -527,7 +623,12 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
   const handleConfirmImageUrl = () => {
     if (!imageUrl.trim()) return;
-    insertImageElement(imageUrl.trim(), imageCaption.trim() || 'Imagem do manual');
+    insertImageElement(
+      imageUrl.trim(),
+      imageCaption.trim() || 'Imagem do manual',
+      imageInsertAlign,
+      imageInsertWidth
+    );
     setImageUrl('');
     setImageCaption('');
     setIsImageModalOpen(false);
@@ -989,6 +1090,147 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
               >
                 <Trash2 size={12} />
                 <span>Excluir Imagem</span>
+              </button>
+            </div>
+          )}
+
+          {/* BARRA FLUTUANTE DE FORMATAÇÃO DO VÍDEO SELECIONADO */}
+          {selectedVideoElement && (
+            <div
+              className="video-floating-toolbar animate-fade-in"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px 14px',
+                background: 'rgba(239, 68, 68, 0.10)',
+                border: '1px solid #ef4444',
+                borderRadius: 'var(--radius-md)',
+                marginBottom: '10px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#ef4444' }}>
+                <Video size={14} />
+                <span>Ajuste do Vídeo Selecionado:</span>
+              </div>
+
+              {/* Alinhamento do Vídeo */}
+              <div style={{ display: 'flex', gap: '3px', background: 'var(--bg-surface)', padding: '2px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => alignSelectedVideo('left')}
+                  title="Alinhar à Esquerda (no canto com texto ao lado)"
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '3px',
+                    border: 'none',
+                    background: selectedVideoAlign === 'left' ? '#ef4444' : 'transparent',
+                    color: selectedVideoAlign === 'left' ? '#fff' : 'var(--text-main)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <AlignLeft size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => alignSelectedVideo('center')}
+                  title="Centralizar Vídeo"
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '3px',
+                    border: 'none',
+                    background: selectedVideoAlign === 'center' ? '#ef4444' : 'transparent',
+                    color: selectedVideoAlign === 'center' ? '#fff' : 'var(--text-main)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <AlignCenter size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => alignSelectedVideo('right')}
+                  title="Alinhar à Direita (no canto com texto ao lado)"
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '3px',
+                    border: 'none',
+                    background: selectedVideoAlign === 'right' ? '#ef4444' : 'transparent',
+                    color: selectedVideoAlign === 'right' ? '#fff' : 'var(--text-main)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <AlignRight size={13} />
+                </button>
+              </div>
+
+              {/* Presets de Tamanho do Vídeo */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tamanho:</span>
+                {[35, 50, 75, 100].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => applyVideoWidth(pct)}
+                    style={{
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-subtle)',
+                      background: selectedVideoWidth === pct ? '#ef4444' : 'var(--bg-surface)',
+                      color: selectedVideoWidth === pct ? '#fff' : 'var(--text-main)',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+
+              {/* Slider de Tamanho Arrastando */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="range"
+                  min="20"
+                  max="100"
+                  value={selectedVideoWidth}
+                  onChange={(e) => applyVideoWidth(Number(e.target.value))}
+                  style={{ width: '90px', cursor: 'pointer', accentColor: '#ef4444' }}
+                  title="Arrastar para definir tamanho do vídeo"
+                />
+                <span style={{ fontSize: '0.74rem', color: '#ef4444', fontWeight: 700, minWidth: '34px' }}>
+                  {selectedVideoWidth}%
+                </span>
+              </div>
+
+              {/* Botão Remover Vídeo */}
+              <button
+                type="button"
+                onClick={removeSelectedVideo}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#ef4444',
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  marginLeft: 'auto',
+                }}
+                title="Excluir vídeo selecionado"
+              >
+                <Trash2 size={12} />
+                <span>Excluir Vídeo</span>
               </button>
             </div>
           )}
@@ -1920,15 +2162,260 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                 />
               </div>
 
+              {/* Ajuste de Tamanho e Alinhamento da Imagem */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', background: 'var(--bg-surface)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    Tamanho da Imagem:
+                  </label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[25, 50, 75, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setImageInsertWidth(pct)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          borderRadius: '4px',
+                          border: `1px solid ${imageInsertWidth === pct ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                          background: imageInsertWidth === pct ? 'var(--color-primary)' : 'transparent',
+                          color: imageInsertWidth === pct ? '#fff' : 'var(--text-main)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    Alinhamento:
+                  </label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {(['left', 'center', 'right'] as const).map((aln) => (
+                      <button
+                        key={aln}
+                        type="button"
+                        onClick={() => setImageInsertAlign(aln)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          borderRadius: '4px',
+                          border: `1px solid ${imageInsertAlign === aln ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                          background: imageInsertAlign === aln ? 'var(--color-primary)' : 'transparent',
+                          color: imageInsertAlign === aln ? '#fff' : 'var(--text-main)',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        title={aln === 'left' ? 'Esquerda' : aln === 'right' ? 'Direita' : 'Centro'}
+                      >
+                        {aln === 'left' ? <AlignLeft size={13} /> : aln === 'right' ? <AlignRight size={13} /> : <AlignCenter size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={handleConfirmImageUrl}
                 disabled={!imageUrl.trim()}
-                style={{ padding: '10px', marginTop: '6px', fontWeight: 700 }}
+                style={{ padding: '10px', marginTop: '4px', fontWeight: 700 }}
               >
                 Inserir Link da Imagem
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE INSERÇÃO DE VÍDEO POR LINK */}
+      {isVideoModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '20px',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsVideoModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '480px',
+              background: 'var(--bg-card, #0f172a)',
+              borderRadius: '16px',
+              border: '1px solid var(--border-subtle)',
+              padding: '24px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Video size={18} color="#ef4444" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>
+                  Inserir Vídeo por Link
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  URL ou Link do Vídeo:
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://www.youtube.com/watch?v=... ou https://youtu.be/... ou https://vimeo.com/..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--text-main)',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                  }}
+                  autoFocus
+                />
+                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+                  Suporta links do YouTube, Vimeo ou arquivos diretos de vídeo (.mp4, .webm).
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  Legenda ou Descrição do Vídeo (Opcional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Demonstração do fluxo de conferência de extratos"
+                  value={videoCaption}
+                  onChange={(e) => setVideoCaption(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--text-main)',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* Ajuste de Tamanho e Alinhamento do Vídeo */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', background: 'var(--bg-surface)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    Tamanho do Vídeo:
+                  </label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[35, 50, 75, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setVideoInsertWidth(pct)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          borderRadius: '4px',
+                          border: `1px solid ${videoInsertWidth === pct ? '#ef4444' : 'var(--border-subtle)'}`,
+                          background: videoInsertWidth === pct ? '#ef4444' : 'transparent',
+                          color: videoInsertWidth === pct ? '#fff' : 'var(--text-main)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    Alinhamento:
+                  </label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {(['left', 'center', 'right'] as const).map((aln) => (
+                      <button
+                        key={aln}
+                        type="button"
+                        onClick={() => setVideoInsertAlign(aln)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          borderRadius: '4px',
+                          border: `1px solid ${videoInsertAlign === aln ? '#ef4444' : 'var(--border-subtle)'}`,
+                          background: videoInsertAlign === aln ? '#ef4444' : 'transparent',
+                          color: videoInsertAlign === aln ? '#fff' : 'var(--text-main)',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        title={aln === 'left' ? 'Esquerda' : aln === 'right' ? 'Direita' : 'Centro'}
+                      >
+                        {aln === 'left' ? <AlignLeft size={13} /> : aln === 'right' ? <AlignRight size={13} /> : <AlignCenter size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsVideoModalOpen(false)}
+                  style={{ flex: 1, padding: '10px' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleConfirmVideoUrl}
+                  disabled={!videoUrl.trim()}
+                  style={{ flex: 1, padding: '10px', fontWeight: 700 }}
+                >
+                  Inserir Vídeo
+                </button>
+              </div>
             </div>
           </div>
         </div>
