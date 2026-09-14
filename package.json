@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "deploy": "npm run build && npx firebase deploy",
     "deploy:hosting": "npm run build && npx firebase deploy --only hosting",
-    "deploy:rules": "npx firebase deploy --only firestore:rules,storage"
+    "deploy:rules": "npx firebase deploy --only firestore:rules"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
