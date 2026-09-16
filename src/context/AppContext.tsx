@@ -202,14 +202,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [articles, setArticles] = useState<Article[]>(() => {
     const saved = localStorage.getItem('conciliador_articles_v7');
     if (!saved) {
-      localStorage.setItem('conciliador_articles_v7', JSON.stringify([]));
-      return [];
+      localStorage.setItem('conciliador_articles_v7', JSON.stringify(INITIAL_ARTICLES));
+      return INITIAL_ARTICLES;
     }
     try {
       const parsed: Article[] = JSON.parse(saved);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return INITIAL_ARTICLES;
+      }
       return parsed;
     } catch {
-      return [];
+      return INITIAL_ARTICLES;
     }
   });
 
@@ -273,7 +276,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 3. Ouvinte de Usuários Firestore (com normalização e merge corporativo)
+    // 3. Ouvinte de Usuários Firestore (com normalização e desduplicação por e-mail)
     const unsubUsers = subscribeUsers((remoteUsers) => {
       const normalizedRemoteUsers = remoteUsers.map((u) => {
         const isCorp = Boolean(u.email && u.email.trim().toLowerCase().endsWith('@conciliadorcontabil.com.br'));
@@ -284,16 +287,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       });
 
-      const remoteEmailMap = new Map<string, UserProfile>();
+      const emailToUserMap = new Map<string, UserProfile>();
       normalizedRemoteUsers.forEach((u) => {
-        if (u.email) {
-          remoteEmailMap.set(u.email.toLowerCase().trim(), u);
+        const emailKey = (u.email || '').toLowerCase().trim();
+        if (!emailKey) return;
+        const existing = emailToUserMap.get(emailKey);
+        if (!existing) {
+          emailToUserMap.set(emailKey, u);
+        } else {
+          // Desduplica registros para o mesmo e-mail, preservando dados de login e cargo mais alto
+          const existingHasLogin = Boolean(existing.lastLoginAt);
+          const currentHasLogin = Boolean(u.lastLoginAt);
+
+          const preferredRole = (existing.role === 'SUPER_ADMIN' || existing.role === 'ADMIN' || existing.role === 'REVIEWER')
+            ? existing.role
+            : u.role;
+
+          if (currentHasLogin && !existingHasLogin) {
+            emailToUserMap.set(emailKey, {
+              ...u,
+              role: preferredRole,
+            });
+          } else {
+            emailToUserMap.set(emailKey, {
+              ...existing,
+              role: preferredRole,
+              lastLoginAt: existing.lastLoginAt || u.lastLoginAt,
+            });
+          }
         }
       });
 
-      const merged: UserProfile[] = [...normalizedRemoteUsers];
+      const merged: UserProfile[] = Array.from(emailToUserMap.values());
       INITIAL_USERS.forEach((initU) => {
-        if (!remoteEmailMap.has(initU.email.toLowerCase().trim())) {
+        const initKey = initU.email.toLowerCase().trim();
+        if (!emailToUserMap.has(initKey)) {
           merged.push(initU);
         }
       });
@@ -752,10 +780,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userType: userType,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
+      lastLoginAt: null,
     };
 
     setUsers((prev) => [...prev, newUser]);
+
+    if (isFirebaseConfigured) {
+      import('../services/firebase').then(({ db }) => {
+        if (!db) return;
+        import('firebase/firestore').then(({ doc, setDoc, serverTimestamp }) => {
+          setDoc(doc(db, 'users', newUser.uid), {
+            ...newUser,
+            serverCreatedAt: serverTimestamp(),
+          }).catch((err) => console.warn('Erro ao salvar novo colaborador no Firestore:', err));
+        });
+      });
+    }
+
     return { success: true };
   };
 

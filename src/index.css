@@ -705,5 +705,24 @@ input, textarea, select {
   color: var(--text-main);
 }
 
+/* ==========================================================================
+   Article Image Fallback & Graceful Degradation
+   ========================================================================== */
 
+.article-image-fallback {
+  transition: all 0.2s ease;
+  user-select: none;
+}
 
+.article-image-fallback:hover {
+  border-color: var(--color-primary) !important;
+  background: rgba(92, 183, 128, 0.06) !important;
+}
+
+.article-rendered-body img,
+.article-visual-editor img,
+.article-preview-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md, 8px);
+}

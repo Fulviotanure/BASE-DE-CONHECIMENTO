@@ -8,7 +8,18 @@ import {
   signInWithPopup,
   type User 
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc,
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  serverTimestamp 
+} from 'firebase/firestore';
 import { auth, db } from './firebase';
 import type { UserProfile, UserRole, UserType } from '../types';
 
@@ -43,7 +54,7 @@ export function determineInitialRole(email: string): UserRole {
 /**
  * Autenticação via Conta do Google (Google OAuth)
  * Identifica automaticamente se é colaborador interno (@conciliadorcontabil.com.br)
- * ou usuário externo/cliente, e atribui o papel correto.
+ * ou usuário externo/cliente, e preserva o cargo pré-atribuído no painel de administração.
  */
 export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: string }> {
   if (!auth) {
@@ -67,13 +78,12 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
 
       if (userDoc.exists()) {
         profile = userDoc.data() as UserProfile;
-        if (!isCorporateEmailValid(cleanEmail)) {
-          // Usuários com contas externas (ex: Gmail) são estritamente CLIENTES/LEITORES
-          profile.role = 'READER';
-          profile.userType = 'EXTERNAL';
-        } else if (isSuperAdminUser(cleanEmail)) {
+        if (isSuperAdminUser(cleanEmail)) {
           profile.role = 'SUPER_ADMIN';
           profile.userType = 'INTERNAL';
+        } else if (!isCorporateEmailValid(cleanEmail)) {
+          profile.role = 'READER';
+          profile.userType = 'EXTERNAL';
         } else {
           profile.userType = 'INTERNAL';
         }
@@ -81,23 +91,46 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
         profile.photoURL = firebaseUser.photoURL || profile.photoURL;
         profile.lastLoginAt = new Date().toISOString();
 
-        await updateDoc(userRef, {
-          role: profile.role,
-          userType: profile.userType,
-          photoURL: profile.photoURL,
-          lastLoginAt: profile.lastLoginAt,
-          serverLastLoginAt: serverTimestamp(),
-        });
+        await setDoc(
+          userRef,
+          {
+            ...profile,
+            serverLastLoginAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
       } else {
+        // Verifica se já existia um registro cadastrado para este e-mail no Firestore (ex: cadastrado no painel com UID 'usr-xxx')
+        const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+        const emailSnap = await getDocs(emailQuery);
+
+        let existingRole: UserRole = initialRole;
+        let oldDocId: string | null = null;
+        let existingCreatedAt: string = new Date().toISOString();
+        let existingDisplayName: string = firebaseUser.displayName || cleanEmail.split('@')[0];
+
+        if (!emailSnap.empty) {
+          const matchDoc = emailSnap.docs[0];
+          const matchData = matchDoc.data() as UserProfile;
+          existingRole = matchData.role || initialRole;
+          oldDocId = matchDoc.id;
+          if (matchData.createdAt) existingCreatedAt = matchData.createdAt;
+          if (matchData.displayName) existingDisplayName = matchData.displayName;
+        }
+
+        if (isSuperAdminUser(cleanEmail)) {
+          existingRole = 'SUPER_ADMIN';
+        }
+
         profile = {
           uid: firebaseUser.uid,
           email: cleanEmail,
-          displayName: firebaseUser.displayName || cleanEmail.split('@')[0],
+          displayName: firebaseUser.displayName || existingDisplayName,
           photoURL: firebaseUser.photoURL || undefined,
-          role: initialRole,
+          role: existingRole,
           userType: userType,
           status: 'ACTIVE',
-          createdAt: new Date().toISOString(),
+          createdAt: existingCreatedAt,
           lastLoginAt: new Date().toISOString(),
         };
 
@@ -106,6 +139,11 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
           serverCreatedAt: serverTimestamp(),
           serverLastLoginAt: serverTimestamp(),
         });
+
+        // Remove documento legado com UID antigo se for diferente do UID real do Firebase Auth
+        if (oldDocId && oldDocId !== firebaseUser.uid) {
+          await deleteDoc(doc(db, 'users', oldDocId)).catch(() => {});
+        }
       }
     } catch (err) {
       console.warn('Erro ao sincronizar perfil Google com Firestore:', err);
@@ -168,7 +206,25 @@ export async function registerWithEmailPassword(
     displayName: formattedName,
   });
 
-  const initialRole: UserRole = determineInitialRole(cleanEmail);
+  // Verifica se já existia papel pré-atribuído no Firestore
+  const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+  const emailSnap = await getDocs(emailQuery);
+
+  let initialRole: UserRole = determineInitialRole(cleanEmail);
+  let oldDocId: string | null = null;
+  let existingCreatedAt: string = new Date().toISOString();
+
+  if (!emailSnap.empty) {
+    const matchDoc = emailSnap.docs[0];
+    const matchData = matchDoc.data() as UserProfile;
+    if (matchData.role) initialRole = matchData.role;
+    oldDocId = matchDoc.id;
+    if (matchData.createdAt) existingCreatedAt = matchData.createdAt;
+  }
+
+  if (isSuperAdminUser(cleanEmail)) {
+    initialRole = 'SUPER_ADMIN';
+  }
 
   const userProfile: UserProfile = {
     uid: cred.user.uid,
@@ -177,7 +233,7 @@ export async function registerWithEmailPassword(
     role: initialRole,
     userType: userType,
     status: 'ACTIVE',
-    createdAt: new Date().toISOString(),
+    createdAt: existingCreatedAt,
     lastLoginAt: new Date().toISOString(),
   };
 
@@ -187,6 +243,10 @@ export async function registerWithEmailPassword(
     serverCreatedAt: serverTimestamp(),
     serverLastLoginAt: serverTimestamp(),
   });
+
+  if (oldDocId && oldDocId !== cred.user.uid) {
+    await deleteDoc(doc(db, 'users', oldDocId)).catch(() => {});
+  }
 
   return { user: userProfile };
 }
@@ -217,29 +277,61 @@ export async function loginWithEmailPassword(
       profile.role = 'SUPER_ADMIN';
     }
     profile.userType = profile.userType || userType;
-    await updateDoc(userRef, {
-      role: profile.role,
-      userType: profile.userType,
-      lastLoginAt: new Date().toISOString(),
-      serverLastLoginAt: serverTimestamp(),
-    });
+    profile.lastLoginAt = new Date().toISOString();
+
+    await setDoc(
+      userRef,
+      {
+        role: profile.role,
+        userType: profile.userType,
+        lastLoginAt: profile.lastLoginAt,
+        serverLastLoginAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } else {
-    const initialRole: UserRole = determineInitialRole(cleanEmail);
+    // Verifica papel pré-atribuído no Firestore
+    const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+    const emailSnap = await getDocs(emailQuery);
+
+    let roleToAssign: UserRole = determineInitialRole(cleanEmail);
+    let oldDocId: string | null = null;
+    let existingCreatedAt: string = new Date().toISOString();
+    let existingDisplayName: string = cred.user.displayName || cleanEmail.split('@')[0];
+
+    if (!emailSnap.empty) {
+      const matchDoc = emailSnap.docs[0];
+      const matchData = matchDoc.data() as UserProfile;
+      if (matchData.role) roleToAssign = matchData.role;
+      oldDocId = matchDoc.id;
+      if (matchData.createdAt) existingCreatedAt = matchData.createdAt;
+      if (matchData.displayName) existingDisplayName = matchData.displayName;
+    }
+
+    if (isSuperAdminUser(cleanEmail)) {
+      roleToAssign = 'SUPER_ADMIN';
+    }
+
     profile = {
       uid: cred.user.uid,
       email: cleanEmail,
-      displayName: cred.user.displayName || cleanEmail.split('@')[0],
-      role: initialRole,
+      displayName: cred.user.displayName || existingDisplayName,
+      role: roleToAssign,
       userType: userType,
       status: 'ACTIVE',
-      createdAt: new Date().toISOString(),
+      createdAt: existingCreatedAt,
       lastLoginAt: new Date().toISOString(),
     };
+
     await setDoc(userRef, {
       ...profile,
       serverCreatedAt: serverTimestamp(),
       serverLastLoginAt: serverTimestamp(),
     });
+
+    if (oldDocId && oldDocId !== cred.user.uid) {
+      await deleteDoc(doc(db, 'users', oldDocId)).catch(() => {});
+    }
   }
 
   if (profile.status === 'INACTIVE') {
@@ -280,17 +372,29 @@ export function subscribeAuthState(
         const snapshot = await getDoc(userRef);
         if (snapshot.exists()) {
           const profile = snapshot.data() as UserProfile;
-          if (!isCorporateEmailValid(cleanEmail)) {
-            profile.role = 'READER';
-            profile.userType = 'EXTERNAL';
-          } else if (isSuperAdminUser(cleanEmail)) {
+          if (isSuperAdminUser(cleanEmail)) {
             profile.role = 'SUPER_ADMIN';
             profile.userType = 'INTERNAL';
-          } else {
-            profile.userType = 'INTERNAL';
+          } else if (!isCorporateEmailValid(cleanEmail)) {
+            profile.role = 'READER';
+            profile.userType = 'EXTERNAL';
           }
+          profile.userType = profile.userType || userType;
           onUserChanged(firebaseUser, profile);
           return;
+        } else {
+          // Busca por e-mail caso o documento ainda use UID legado
+          const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+          const emailSnap = await getDocs(emailQuery);
+          if (!emailSnap.empty) {
+            const profile = emailSnap.docs[0].data() as UserProfile;
+            if (isSuperAdminUser(cleanEmail)) {
+              profile.role = 'SUPER_ADMIN';
+              profile.userType = 'INTERNAL';
+            }
+            onUserChanged(firebaseUser, profile);
+            return;
+          }
         }
       } catch (err) {
         console.warn('Erro ao carregar perfil do Firestore:', err);

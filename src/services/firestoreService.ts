@@ -5,8 +5,9 @@ import {
   updateDoc, 
   onSnapshot, 
   query, 
+  where,
   orderBy, 
-  getDocs,
+  getDocs, 
   serverTimestamp 
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -19,14 +20,21 @@ import { INITIAL_CATEGORIES, INITIAL_ARTICLES, INITIAL_TOOLS, INITIAL_USERS } fr
 export function subscribeArticles(onData: (articles: Article[]) => void): () => void {
   if (!db) return () => {};
 
-  const q = query(collection(db, 'articles'), orderBy('updatedAt', 'desc'));
+  const colRef = collection(db, 'articles');
   return onSnapshot(
-    q,
+    colRef,
     (snapshot) => {
       const items = snapshot.docs.map((d) => ({
         id: d.id,
         ...d.data(),
       })) as Article[];
+
+      items.sort((a, b) => {
+        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
       onData(items);
     },
     (err) => {
@@ -94,6 +102,29 @@ export async function toggleUserStatusInFirestore(uid: string, newStatus: 'ACTIV
     status: newStatus,
     serverUpdatedAt: serverTimestamp(),
   });
+}
+
+export async function deleteUserFromFirestore(uid: string, email?: string): Promise<void> {
+  if (!db) return;
+  try {
+    const userRef = doc(db, 'users', uid);
+    await setDoc(userRef, { status: 'INACTIVE' }, { merge: true }).catch(() => {});
+    // Remove o documento
+    const { deleteDoc: firestoreDeleteDoc } = await import('firebase/firestore');
+    await firestoreDeleteDoc(userRef).catch(() => {});
+
+    // Se fornecido e-mail, remove possíveis duplicatas legadas
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const emailSnap = await getDocs(emailQuery);
+      for (const d of emailSnap.docs) {
+        await firestoreDeleteDoc(doc(db, 'users', d.id)).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao remover usuário do Firestore:', err);
+  }
 }
 
 /**

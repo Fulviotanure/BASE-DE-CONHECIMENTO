@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useArticleImageFallback } from '../../utils/imageFallback';
 import {
   FileEdit,
   Send,
@@ -132,6 +133,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   const visualEditorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageUploadRef = useRef<HTMLInputElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  // Intercepta imagens com links expirados do Movidesk no editor visual e na prévia
+  useArticleImageFallback(visualEditorRef, [content, editorMode]);
+  useArticleImageFallback(previewRef, [content, editorMode]);
 
   // Artigo atualizado em tempo real da lista
   const currentArticle = articles.find((a) => a.id === editingArticle?.id) || editingArticle;
@@ -1921,6 +1927,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                   </div>
 
                   <div 
+                    ref={previewRef}
                     className="article-preview-content"
                     style={{ fontSize: '0.92rem' }}
                     dangerouslySetInnerHTML={{ __html: content }} 

@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
+import { INITIAL_ARTICLES } from '../../data/initialSeed';
+import { useArticleImageFallback } from '../../utils/imageFallback';
 
 interface ExternalPortalViewProps {
   onBackToPresentation?: () => void;
@@ -53,6 +55,8 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
   const [isLinksMenuOpen, setIsLinksMenuOpen] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
+  const articleBodyRef = React.useRef<HTMLDivElement>(null);
+
   // Sincroniza estado local quando selectedArticle for resetado externamente (ex: clique na logo/home)
   useEffect(() => {
     if (!selectedArticle) {
@@ -63,6 +67,9 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
   // O artigo em leitura sincroniza com a barra lateral de árvore e com a navegação do portal
   const readingArticle = selectedArticle || localArticle;
 
+  // Intercepta imagens quebradas para exibir aviso elegante
+  useArticleImageFallback(articleBodyRef, [readingArticle?.id, readingArticle?.contentHtml]);
+
   // Incrementa visualização quando um artigo é selecionado
   useEffect(() => {
     if (selectedArticle) {
@@ -70,8 +77,11 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
     }
   }, [selectedArticle?.id]);
 
+  // Garante que haja artigos imediatos desde o primeiro frame
+  const sourceArticles = articles && articles.length > 0 ? articles : INITIAL_ARTICLES;
+
   // Filtra apenas artigos aprovados para clientes/externos (excluindo estritamente Playbooks)
-  const availableArticles = articles.filter((a) => {
+  const availableArticles = sourceArticles.filter((a) => {
     const isPb =
       a.categoryName?.toLowerCase().includes('playbook') ||
       a.categoryId === 'cat-11' ||
@@ -273,6 +283,7 @@ export const ExternalPortalView: React.FC<ExternalPortalViewProps> = ({
 
             {/* Conteúdo HTML do Artigo */}
             <div
+              ref={articleBodyRef}
               className="article-rendered-body"
               style={{
                 lineHeight: 1.8,

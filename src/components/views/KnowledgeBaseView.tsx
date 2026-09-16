@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
+import { INITIAL_ARTICLES } from '../../data/initialSeed';
+import { useArticleImageFallback } from '../../utils/imageFallback';
 
 interface KnowledgeBaseViewProps {
   onOpenNewArticle: () => void;
@@ -57,6 +59,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   const isDark = theme === 'dark';
 
   const [copiedLink, setCopiedLink] = useState(false);
+  const articleBodyRef = React.useRef<HTMLDivElement>(null);
+
+  // Intercepta imagens quebradas para exibir fallback amigável
+  useArticleImageFallback(articleBodyRef, [selectedArticle?.id, selectedArticle?.contentHtml]);
 
   // Mapeamento de ícones por nome
   const getCategoryIcon = (iconName: string, size = 20) => {
@@ -81,8 +87,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.email?.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
   const isAdmin = isSuperAdmin || currentUser?.role === 'ADMIN';
 
-  // Artigos visíveis
-  const visibleArticles = articles.filter((a) => {
+  // Artigos visíveis com fallback imediato
+  const sourceArticles = articles && articles.length > 0 ? articles : INITIAL_ARTICLES;
+
+  const visibleArticles = sourceArticles.filter((a) => {
     if (isExternal) {
       return a.currentStatus === 'APPROVED' && (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL');
     }
@@ -363,6 +371,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
 
           {/* Corpo do Artigo Alargado (Quase Toda a Largura da Tela) */}
           <div
+            ref={articleBodyRef}
             className="card article-rendered-body"
             style={{
               lineHeight: 1.85,

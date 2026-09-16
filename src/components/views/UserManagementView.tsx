@@ -38,26 +38,50 @@ export const UserManagementView: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Separação em Colaboradores (internos) e Usuários (externos)
+  // Separação em Colaboradores (internos) e Usuários (externos) com desduplicação por e-mail
   const { colaboradoresList, usuariosList } = useMemo(() => {
-    const colab: UserProfile[] = [];
-    const usu: UserProfile[] = [];
+    const colabMap = new Map<string, UserProfile>();
+    const usuMap = new Map<string, UserProfile>();
 
     users.forEach((u) => {
-      // Regra estrita: Apenas emails que terminam com @conciliadorcontabil.com.br são colaboradores internos.
-      // Qualquer outro domínio (ex: @gmail.com, parceiros, etc.) é classificado como Cliente/Usuário Externo.
-      const isInternal = Boolean(
-        u.email && u.email.trim().toLowerCase().endsWith('@conciliadorcontabil.com.br')
-      );
+      const cleanEmail = (u.email || '').trim().toLowerCase();
+      if (!cleanEmail) return;
 
-      if (isInternal) {
-        colab.push(u);
+      const isInternal = cleanEmail.endsWith('@conciliadorcontabil.com.br');
+      const targetMap = isInternal ? colabMap : usuMap;
+
+      const existing = targetMap.get(cleanEmail);
+      if (!existing) {
+        targetMap.set(cleanEmail, u);
       } else {
-        usu.push(u);
+        // Se houver mais de um registro para o mesmo e-mail (ex: pré-cadastro e login Auth),
+        // preserva o registro que já realizou login e preserva o cargo atribuído mais alto
+        const existingHasLogin = Boolean(existing.lastLoginAt);
+        const currentHasLogin = Boolean(u.lastLoginAt);
+
+        const preferredRole = (existing.role === 'SUPER_ADMIN' || existing.role === 'ADMIN' || existing.role === 'REVIEWER')
+          ? existing.role
+          : u.role;
+
+        if (currentHasLogin && !existingHasLogin) {
+          targetMap.set(cleanEmail, {
+            ...u,
+            role: preferredRole,
+          });
+        } else {
+          targetMap.set(cleanEmail, {
+            ...existing,
+            role: preferredRole,
+            lastLoginAt: existing.lastLoginAt || u.lastLoginAt,
+          });
+        }
       }
     });
 
-    return { colaboradoresList: colab, usuariosList: usu };
+    return { 
+      colaboradoresList: Array.from(colabMap.values()), 
+      usuariosList: Array.from(usuMap.values()) 
+    };
   }, [users]);
 
   // Função de Ordenação solicitada:
