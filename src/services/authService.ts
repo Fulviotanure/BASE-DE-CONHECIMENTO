@@ -185,17 +185,46 @@ export function removeDeletedCategoryId(id: string): void {
   } catch {}
 }
 
+export const DELETED_ARTICLES_KEY = 'conciliador_deleted_articles_v2';
+
+export function getDeletedArticleIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_ARTICLES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed.map((id: string) => id.trim()));
+    }
+  } catch {}
+  return new Set();
+}
+
+export function addDeletedArticleId(id: string): void {
+  try {
+    const clean = id.trim();
+    const set = getDeletedArticleIds();
+    set.add(clean);
+    localStorage.setItem(DELETED_ARTICLES_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+export function removeDeletedArticleId(id: string): void {
+  try {
+    const clean = id.trim();
+    const set = getDeletedArticleIds();
+    set.delete(clean);
+    localStorage.setItem(DELETED_ARTICLES_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
 /**
  * Determina de forma infalível se um usuário pertence à equipe interna
  * (Super Admin, Administrador, Revisor, Operador ou e-mail corporativo Conciliador).
+ * Prioridade absoluta: Se o cargo for diferente de READER, é sempre INTERNO.
  */
 export function isInternalUser(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
-  // 1. Se o papel atual for READER ou o tipo for EXTERNAL, trata estritamente como LEITOR/CLIENTE externo
-  if (user.role === 'READER' || user.userType === 'EXTERNAL') {
-    return false;
-  }
-  // 2. Cargos administrativos e operacionais são sempre INTERNOS
+  // 1. Cargos administrativos e operacionais são SEMPRE INTERNOS
+  // (prioridade máxima e irrevogável sobre qualquer e-mail ou tipo legado)
   if (
     user.role === 'SUPER_ADMIN' ||
     user.role === 'ADMIN' ||
@@ -204,11 +233,15 @@ export function isInternalUser(user: UserProfile | null | undefined): boolean {
   ) {
     return true;
   }
+  // 2. Se o papel atual for expressamente READER, é leitor/externo
+  if (user.role === 'READER') {
+    return false;
+  }
   // 3. Qualquer e-mail corporativo do Conciliador (desde que não seja READER) é INTERNO
   if (user.email && isCorporateEmailValid(user.email)) {
     return true;
   }
-  // 4. Usuários marcados como INTERNAL sem ser READER
+  // 4. Usuários explicitamente marcados como INTERNAL sem ser READER
   if (user.userType === 'INTERNAL') {
     return true;
   }
@@ -220,9 +253,6 @@ export function isInternalUser(user: UserProfile | null | undefined): boolean {
  */
 export function isExternalUser(user: UserProfile | null | undefined): boolean {
   if (!user) return true;
-  if (user.role === 'READER' || user.userType === 'EXTERNAL') {
-    return true;
-  }
   return !isInternalUser(user);
 }
 
@@ -267,6 +297,7 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
       let preAssignedRole: UserRole | null = getLocalPreAssignedRole(cleanEmail);
       let existingCreatedAt: string = new Date().toISOString();
       let existingDisplayName: string = firebaseUser.displayName || cleanEmail.split('@')[0];
+      let existingPhotoURL: string | undefined = undefined;
       const legacyDocIdsToDelete: string[] = [];
 
       for (const d of emailSnap.docs) {
@@ -279,6 +310,7 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
         }
         if (data.createdAt) existingCreatedAt = data.createdAt;
         if (data.displayName && !firebaseUser.displayName) existingDisplayName = data.displayName;
+        if (data.photoURL && !existingPhotoURL) existingPhotoURL = data.photoURL;
       }
 
       if (userDoc.exists()) {
@@ -288,6 +320,7 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
         }
         if (currentData.createdAt) existingCreatedAt = currentData.createdAt;
         if (currentData.displayName) existingDisplayName = currentData.displayName;
+        if (currentData.photoURL) existingPhotoURL = currentData.photoURL;
       }
 
       // Regra de Ouro: Mantém estritamente o cargo pré-atribuído pelo Administrador
@@ -302,11 +335,15 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
 
       const finalUserType: UserType = (finalRole !== 'READER' || isCorp) ? 'INTERNAL' : defaultUserType;
 
+      // Puxa a foto oficial do Google autenticado automaticamente
+      const googlePhoto = firebaseUser.photoURL || firebaseUser.providerData?.find((p) => p.photoURL)?.photoURL || undefined;
+      const finalPhoto = existingPhotoURL || googlePhoto || undefined;
+
       profile = {
         uid: firebaseUser.uid,
         email: cleanEmail,
         displayName: firebaseUser.displayName || existingDisplayName,
-        photoURL: firebaseUser.photoURL || undefined,
+        photoURL: finalPhoto,
         role: finalRole,
         userType: finalUserType,
         status: 'ACTIVE',
@@ -318,6 +355,7 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
         userRef,
         {
           ...profile,
+          photoURL: finalPhoto || null,
           serverCreatedAt: serverTimestamp(),
           serverLastLoginAt: serverTimestamp(),
         },
@@ -332,13 +370,15 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
       if (err.message?.includes('excluído')) throw err;
       console.warn('Erro ao sincronizar perfil Google com Firestore:', err);
       const preRole = getLocalPreAssignedRole(cleanEmail);
+      const fallbackRole = isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : (preRole || initialDefaultRole);
+      const fallbackUserType: UserType = (fallbackRole !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
       profile = {
         uid: firebaseUser.uid,
         email: cleanEmail,
         displayName: firebaseUser.displayName || cleanEmail.split('@')[0],
         photoURL: firebaseUser.photoURL || undefined,
-        role: isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : (preRole || initialDefaultRole),
-        userType: defaultUserType,
+        role: fallbackRole,
+        userType: fallbackUserType,
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date().toISOString(),
@@ -346,13 +386,15 @@ export async function loginWithGoogle(): Promise<{ user: UserProfile; error?: st
     }
   } else {
     const preRole = getLocalPreAssignedRole(cleanEmail);
+    const fallbackRole = isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : (preRole || initialDefaultRole);
+    const fallbackUserType: UserType = (fallbackRole !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
     profile = {
       uid: firebaseUser.uid,
       email: cleanEmail,
       displayName: firebaseUser.displayName || cleanEmail.split('@')[0],
       photoURL: firebaseUser.photoURL || undefined,
-      role: isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : (preRole || initialDefaultRole),
-      userType: defaultUserType,
+      role: fallbackRole,
+      userType: fallbackUserType,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
@@ -579,6 +621,8 @@ export function subscribeAuthState(
     const calculatedRole: UserRole = determineInitialRole(cleanEmail);
     const preRole = getLocalPreAssignedRole(cleanEmail);
 
+    const googlePhoto = firebaseUser.photoURL || firebaseUser.providerData?.find((p) => p.photoURL)?.photoURL || undefined;
+
     if (db) {
       try {
         const userRef = doc(db, 'users', firebaseUser.uid);
@@ -588,9 +632,17 @@ export function subscribeAuthState(
           let role = profile.role || preRole || calculatedRole;
           if (isSuperAdminUser(cleanEmail)) role = 'SUPER_ADMIN';
 
+          const finalPhoto = profile.photoURL || googlePhoto || undefined;
+
+          // Se o banco ainda não tinha a foto gravada e temos a foto do Google, persiste
+          if (!profile.photoURL && googlePhoto) {
+            setDoc(userRef, { photoURL: googlePhoto }, { merge: true }).catch(() => {});
+          }
+
           const userType: UserType = (role !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
           onUserChanged(firebaseUser, {
             ...profile,
+            photoURL: finalPhoto,
             role,
             userType,
           });
@@ -604,10 +656,16 @@ export function subscribeAuthState(
             let role = profile.role || preRole || calculatedRole;
             if (isSuperAdminUser(cleanEmail)) role = 'SUPER_ADMIN';
 
+            const finalPhoto = profile.photoURL || googlePhoto || undefined;
+            if (!profile.photoURL && googlePhoto) {
+              setDoc(emailSnap.docs[0].ref, { photoURL: googlePhoto }, { merge: true }).catch(() => {});
+            }
+
             const userType: UserType = (role !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
             onUserChanged(firebaseUser, {
               ...profile,
               uid: firebaseUser.uid,
+              photoURL: finalPhoto,
               role,
               userType,
             });
@@ -620,13 +678,13 @@ export function subscribeAuthState(
     }
 
     const fallbackRole = isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : (preRole || calculatedRole);
-    const fallbackUserType: UserType = (fallbackRole !== 'READER' || isCorp) ? 'INTERNAL' : defaultUserType;
+    const fallbackUserType: UserType = (fallbackRole !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
 
     const fallbackProfile: UserProfile = {
       uid: firebaseUser.uid,
       email: cleanEmail,
       displayName: firebaseUser.displayName || cleanEmail.split('@')[0] || 'Usuário',
-      photoURL: firebaseUser.photoURL || undefined,
+      photoURL: googlePhoto || undefined,
       role: fallbackRole,
       userType: fallbackUserType,
       status: 'ACTIVE',

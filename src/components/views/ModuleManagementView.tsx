@@ -52,8 +52,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
   const [formIcon, setFormIcon] = useState('Compass');
   const [formAccessLevel, setFormAccessLevel] = useState<'INTERNAL' | 'ALL'>('ALL');
   const [formOrderIndex, setFormOrderIndex] = useState(1);
-  const [formSubcategories, setFormSubcategories] = useState<string[]>([]);
-  const [newSubcategoryInput, setNewSubcategoryInput] = useState('');
   const [formError, setFormError] = useState('');
 
   // Icon Picker State (Catálogo Nativo Lucide +4.100 Ícones sem links externos)
@@ -100,8 +98,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
     setFormIcon('Layers');
     setFormAccessLevel('ALL');
     setFormOrderIndex(categories.length + 1);
-    setFormSubcategories([]);
-    setNewSubcategoryInput('');
     setFormError('');
     setIconPickerSearch('');
     setSelectedIconCategoryTab('POPULAR');
@@ -118,8 +114,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
     setFormIcon(cat.icon || 'Compass');
     setFormAccessLevel(isModuleInternal(cat) ? 'INTERNAL' : 'ALL');
     setFormOrderIndex(cat.orderIndex || 1);
-    setFormSubcategories((cat.subcategories || []).map((s) => s.title));
-    setNewSubcategoryInput('');
     setFormError('');
     setIconPickerSearch('');
     setSelectedIconCategoryTab('POPULAR');
@@ -141,20 +135,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
     }
   };
 
-  // Adiciona subcategoria na lista do form
-  const handleAddSubcategory = () => {
-    const trimmed = newSubcategoryInput.trim();
-    if (trimmed && !formSubcategories.includes(trimmed)) {
-      setFormSubcategories([...formSubcategories, trimmed]);
-      setNewSubcategoryInput('');
-    }
-  };
-
-  // Remove subcategoria
-  const handleRemoveSubcategory = (index: number) => {
-    setFormSubcategories(formSubcategories.filter((_, i) => i !== index));
-  };
-
   // Submissão do formulário
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,12 +144,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
     }
 
     const cleanSlug = formSlug.trim() || formTitle.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
-    const subcats: Subcategory[] = formSubcategories.map((subTitle, idx) => ({
-      id: `sub-${editingCategory ? editingCategory.id : 'new'}-${idx + 1}`,
-      categoryId: editingCategory ? editingCategory.id : '',
-      title: subTitle,
-      slug: subTitle.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-'),
-    }));
 
     if (editingCategory) {
       await updateCategory(editingCategory.id, {
@@ -179,7 +153,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
         icon: formIcon.trim(),
         accessLevel: formAccessLevel,
         orderIndex: Number(formOrderIndex) || 1,
-        subcategories: subcats,
       });
     } else {
       await createCategory({
@@ -189,7 +162,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
         icon: formIcon.trim() || 'Layers',
         accessLevel: formAccessLevel,
         orderIndex: Number(formOrderIndex) || (categories.length + 1),
-        subcategories: subcats,
       });
     }
 
@@ -609,7 +581,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
         {filteredCategories.map((cat) => {
           const theme = getCategoryThemeColors(cat.icon);
           const articleCount = articles.filter((a) => a.categoryId === cat.id).length;
-          const subcategoriesCount = cat.subcategories?.length || 0;
 
           return (
             <div
@@ -772,46 +743,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
                 >
                   {cat.description || 'Sem descrição cadastrada.'}
                 </p>
-
-                {/* Subcategorias */}
-                {subcategoriesCount > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        color: 'var(--text-subtle)',
-                        textTransform: 'uppercase',
-                        display: 'block',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      Subcategorias ({subcategoriesCount}):
-                    </span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {cat.subcategories?.slice(0, 4).map((sub) => (
-                        <span
-                          key={sub.id}
-                          style={{
-                            fontSize: '0.74rem',
-                            color: 'var(--text-muted)',
-                            background: 'var(--bg-card)',
-                            padding: '3px 8px',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                        >
-                          {sub.title}
-                        </span>
-                      ))}
-                      {subcategoriesCount > 4 && (
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', alignSelf: 'center' }}>
-                          +{subcategoriesCount - 4} mais
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Ações do Card */}
@@ -990,7 +921,7 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
                       {editingCategory ? 'Editar Módulo' : 'Criar Novo Módulo Operacional'}
                     </h3>
                     <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
-                      Personalize nome, descrição, ícone e subcategorias
+                      Personalize nome, descrição, ícone e visibilidade
                     </span>
                   </div>
                 </div>
@@ -1043,7 +974,7 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
                   )}
 
                   {/* Título & Ordem */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: '12px', alignItems: 'end' }}>
                     <div>
                       <label
                         style={{
@@ -1082,6 +1013,7 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
                           fontWeight: 700,
                           color: 'var(--text-main)',
                           marginBottom: '6px',
+                          whiteSpace: 'nowrap',
                         }}
                       >
                         Posição / Ordem:
@@ -1558,102 +1490,6 @@ export const ModuleManagementView: React.FC<ModuleManagementViewProps> = ({ onNa
                           Carregar Mais Ícones (+96)
                         </button>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Subcategorias */}
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        color: 'var(--text-main)',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      Subcategorias do Módulo:
-                    </label>
-
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Ex: Visão Geral, Regras Especiais, Erros Comuns..."
-                        value={newSubcategoryInput}
-                        onChange={(e) => setNewSubcategoryInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddSubcategory();
-                          }
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '8px 10px',
-                          background: 'var(--bg-input)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: '0.85rem',
-                          color: 'var(--text-main)',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddSubcategory}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: 'var(--radius-sm)',
-                          background: 'var(--bg-card)',
-                          border: '1px solid var(--border-subtle)',
-                          color: 'var(--text-main)',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        + Adicionar
-                      </button>
-                    </div>
-
-                    {formSubcategories.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {formSubcategories.map((sub, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '4px 10px',
-                              borderRadius: 'var(--radius-full)',
-                              background: 'var(--bg-card)',
-                              border: '1px solid var(--border-subtle)',
-                              fontSize: '0.78rem',
-                              color: 'var(--text-main)',
-                            }}
-                          >
-                            <span>{sub}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSubcategory(idx)}
-                              style={{
-                                color: 'var(--text-subtle)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                padding: 0,
-                              }}
-                              title="Remover subcategoria"
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                        Nenhuma subcategoria adicionada ainda.
-                      </span>
                     )}
                   </div>
                 </div>

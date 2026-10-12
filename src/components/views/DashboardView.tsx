@@ -42,7 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   initialTab = 'articles',
   onTabChange,
 }) => {
-  const { articles, getUserPerformances, currentUser, categories, setSelectedArticle } = useApp();
+  const { articles, getUserPerformances, currentUser, categories, setSelectedArticle, users } = useApp();
 
   const isInternal = isInternalUser(currentUser);
   const isExternal = isExternalUser(currentUser);
@@ -205,10 +205,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
   }, [articles, searchTerm, selectedCategoryFilter, sortBy]);
 
-  // Desempenho individual por colaborador interno
-  const performances = getUserPerformances().filter((p) =>
-    isCorporateEmailValid(p.userEmail)
-  );
+  // Desempenho individual por colaborador interno (patentes e ranking exclusivos para usuários internos)
+  const performances = useMemo(() => {
+    return getUserPerformances().filter((p) => {
+      const u = users.find((usr) => usr.email.toLowerCase() === p.userEmail.toLowerCase());
+      return u ? isInternalUser(u) : isCorporateEmailValid(p.userEmail);
+    });
+  }, [getUserPerformances, users]);
 
   // Mapeamento e Classificação Geral de Patentes dos Usuários
   const userRankings = useMemo(() => {

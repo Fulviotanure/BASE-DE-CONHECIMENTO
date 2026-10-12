@@ -201,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
       ? [
           {
             id: 'users',
-            label: 'Gestão de Usuários (RBAC)',
+            label: 'Gestão de Usuários',
             icon: Users,
             badge: null,
           },

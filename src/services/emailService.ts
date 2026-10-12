@@ -1,4 +1,5 @@
 import type { Article, SentEmail, UserProfile, UserRankInfo } from '../types';
+import { isInternalUser } from './authService';
 
 const EMAILS_STORAGE_KEY = 'conciliador_sent_emails_v1';
 
@@ -204,12 +205,15 @@ export function sendArticleApprovedEmail(
 }
 
 /**
- * 4. E-mail de Promoção de Patente (Gamificação)
+ * 4. E-mail de Promoção de Patente (Gamificação - Exclusivo para Usuários Internos)
  */
 export function sendRankPromotionEmail(
   user: UserProfile,
   newRank: UserRankInfo
-): SentEmail {
+): SentEmail | null {
+  if (!isInternalUser(user)) {
+    return null;
+  }
   const subject = `🎖️ PARABÉNS! Você subiu de patente: ${newRank.badge} ${newRank.title}!`;
 
   const htmlBody = `

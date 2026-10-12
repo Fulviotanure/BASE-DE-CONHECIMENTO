@@ -17,7 +17,9 @@ import type {
 import { sendArticleSubmittedEmail, sendArticleNeedsAdjustmentEmail, sendArticleApprovedEmail, getSentEmails, clearSentEmails } from '../services/emailService';
 import { calculateUserGamification } from '../services/gamificationService';
 import { INITIAL_USERS, INITIAL_ARTICLES, INITIAL_CATEGORIES, INITIAL_TOOLS } from '../data/initialSeed';
-import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, type FirebaseConfig } from '../services/firebase';
+import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, auth, db, type FirebaseConfig } from '../services/firebase';
+import { updateProfile } from 'firebase/auth';
+import { doc, updateDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { 
   subscribeAuthState, 
   logoutUser, 
@@ -39,6 +41,9 @@ import {
   getDeletedCategoryIds,
   addDeletedCategoryId,
   removeDeletedCategoryId,
+  getDeletedArticleIds,
+  addDeletedArticleId,
+  removeDeletedArticleId,
   setLocalPreAssignedRole,
   removeLocalPreAssignedRole,
 } from '../services/authService';
@@ -46,6 +51,7 @@ import {
   subscribeArticles, 
   saveArticleToFirestore, 
   updateArticleInFirestore, 
+  deleteArticleFromFirestore,
   subscribeUsers, 
   updateUserRoleInFirestore, 
   toggleUserStatusInFirestore, 
@@ -80,6 +86,19 @@ interface AppContextType {
   setIsAuthModalOpen: (open: boolean) => void;
   isProfileModalOpen: boolean;
   setIsProfileModalOpen: (open: boolean) => void;
+
+  // Foto de Perfil & Google OAuth Photo
+  updateUserPhoto: (newPhotoURL: string) => Promise<boolean>;
+  pullGooglePhoto: () => string | null;
+
+  // Engajamento de Artigos (Likes/Deslikes Dados e Recebidos)
+  getUserEngagementStats: (email?: string) => {
+    receivedLikes: number;
+    receivedDislikes: number;
+    givenLikes: number;
+    givenDislikes: number;
+    authoredArticles: Article[];
+  };
 
   // Usuários (Painel Administrativo)
   users: UserProfile[];
@@ -134,6 +153,7 @@ interface AppContextType {
     subcategoryId?: string,
     subcategoryName?: string
   ) => void;
+  deleteArticle: (articleId: string) => Promise<void>;
   submitReview: (
     articleId: string, 
     action: 'APPROVE' | 'REQUEST_ADJUSTMENT' | 'REJECT', 
@@ -219,7 +239,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const list = Array.from(emailMap.values());
-    localStorage.setItem('conciliador_users_v7', JSON.stringify(list));
+    try {
+      localStorage.setItem('conciliador_users_v7', JSON.stringify(list));
+    } catch {}
     return list;
   });
 
@@ -228,7 +250,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('conciliador_current_user_v3');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed) {
+          const isInternal = (parsed.role && parsed.role !== 'READER') || isCorporateEmailValid(parsed.email);
+          return {
+            ...parsed,
+            userType: isInternal ? 'INTERNAL' : 'EXTERNAL',
+          };
+        }
       } catch {
         return null;
       }
@@ -329,6 +358,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const [articles, setArticles] = useState<Article[]>(() => {
+    const deletedArticleIds = getDeletedArticleIds();
     const saved = localStorage.getItem('conciliador_articles_v8');
     let loaded = INITIAL_ARTICLES;
     if (saved) {
@@ -350,7 +380,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const enriched = loaded.map((art) => {
+    const enriched = loaded
+      .filter((art) => !deletedArticleIds.has(art.id))
+      .map((art) => {
       const base = SEED_BASELINE_METRICS[art.code];
       if (base && (!art.viewCount || art.viewCount === 0) && (!art.likesCount || art.likesCount === 0)) {
         return {
@@ -420,7 +452,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: 'notif-welcome',
         type: 'SYSTEM',
         title: '👋 Bem-vindo ao Conciliador KB!',
-        message: 'Acesse manuais, crie novos artigos e acumule pontos de conhecimento para subir de patente no ranking.',
+        message: 'Acesse os manuais, procedimentos operacionais e ferramentas na Base de Conhecimento.',
         read: false,
         createdAt: new Date().toISOString(),
       },
@@ -512,7 +544,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Ouvinte de Autenticação
     const unsubAuth = subscribeAuthState((firebaseUser, profile) => {
       if (firebaseUser && profile) {
-        setCurrentUser(profile);
+        setCurrentUser((prev) => {
+          let localSavedPhoto: string | undefined = undefined;
+          try {
+            const saved = localStorage.getItem('conciliador_current_user_v3');
+            if (saved) localSavedPhoto = JSON.parse(saved).photoURL;
+          } catch {}
+
+          const effectiveRole = profile.role || prev?.role || 'READER';
+          const isInternal = effectiveRole !== 'READER' || isCorporateEmailValid(profile.email);
+          const effectivePhoto = profile.photoURL || prev?.photoURL || localSavedPhoto || firebaseUser.photoURL || undefined;
+          return {
+            ...profile,
+            role: effectiveRole,
+            userType: isInternal ? 'INTERNAL' : 'EXTERNAL',
+            photoURL: effectivePhoto,
+          };
+        });
         setIsRealFirebaseAuth(true);
       } else {
         setIsRealFirebaseAuth(false);
@@ -521,8 +569,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. Ouvinte de Artigos Firestore
     const unsubArticles = subscribeArticles((remoteArticles) => {
-      if (remoteArticles.length > 0) {
-        setArticles(remoteArticles);
+      const deletedArticleIds = getDeletedArticleIds();
+      const filtered = remoteArticles.filter((a) => !deletedArticleIds.has(a.id));
+      if (filtered.length > 0) {
+        setArticles(filtered);
       }
     });
 
@@ -586,7 +636,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
 
-      setUsers(Array.from(emailToUserMap.values()));
+      const allUsers = Array.from(emailToUserMap.values());
+      setUsers(allUsers);
+
+      // Sincroniza currentUser caso o usuário logado tenha seu cargo ou dados alterados
+      setCurrentUser((curr) => {
+        if (!curr) return null;
+        const cleanEmail = (curr.email || '').trim().toLowerCase();
+        const updated = emailToUserMap.get(cleanEmail) || allUsers.find((u) => u.uid === curr.uid);
+        if (updated) {
+          const isInternal = updated.role !== 'READER' || isCorporateEmailValid(updated.email);
+          const effectiveRole = updated.role || curr.role;
+          const effectiveType: UserType = isInternal ? 'INTERNAL' : 'EXTERNAL';
+          if (curr.role !== effectiveRole || curr.userType !== effectiveType || (!curr.photoURL && updated.photoURL)) {
+            return {
+              ...curr,
+              ...updated,
+              role: effectiveRole,
+              userType: effectiveType,
+              photoURL: curr.photoURL || updated.photoURL,
+            };
+          }
+        }
+        return curr;
+      });
     });
 
     // 4. Ouvinte de Ferramentas Firestore
@@ -627,23 +700,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Persistência local (fallback offline)
   useEffect(() => {
-    localStorage.setItem('conciliador_users_v3', JSON.stringify(users));
+    try {
+      localStorage.setItem('conciliador_users_v3', JSON.stringify(users));
+    } catch {}
   }, [users]);
 
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('conciliador_current_user_v3', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('conciliador_current_user_v3');
-    }
+    try {
+      if (currentUser) {
+        localStorage.setItem('conciliador_current_user_v3', JSON.stringify(currentUser));
+      } else {
+        localStorage.removeItem('conciliador_current_user_v3');
+      }
+    } catch {}
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_articles_v3', JSON.stringify(articles));
+    try {
+      localStorage.setItem('conciliador_articles_v3', JSON.stringify(articles));
+    } catch {}
   }, [articles]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_tools_v5', JSON.stringify(tools));
+    try {
+      localStorage.setItem('conciliador_tools_v5', JSON.stringify(tools));
+    } catch {}
   }, [tools]);
 
   useEffect(() => {
@@ -931,10 +1012,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Interação: Joinha (Like) e Deslike
+  // Interação: Joinha (Like) e Deslike com histórico do usuário e notificação festiva ao autor
   const voteArticle = (articleId: string, type: 'like' | 'dislike') => {
-    const storageKey = `conciliador_vote_${articleId}`;
-    const previousVote = localStorage.getItem(storageKey);
+    const userCleanEmail = currentUser?.email ? currentUser.email.toLowerCase().trim() : 'anonymous';
+    const userVoteHistoryKey = `conciliador_user_votes_${userCleanEmail}`;
+
+    let userVotesMap: Record<string, 'like' | 'dislike'> = {};
+    try {
+      const stored = localStorage.getItem(userVoteHistoryKey);
+      if (stored) userVotesMap = JSON.parse(stored);
+    } catch {}
+
+    const articleSpecificKey = `conciliador_vote_${articleId}`;
+    const previousVote = userVotesMap[articleId] || localStorage.getItem(articleSpecificKey);
 
     setArticles((prev) =>
       prev.map((art) => {
@@ -946,7 +1036,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Remove o voto ao clicar novamente
             if (type === 'like') likes = Math.max(0, likes - 1);
             else dislikes = Math.max(0, dislikes - 1);
-            localStorage.removeItem(storageKey);
+            delete userVotesMap[articleId];
+            localStorage.removeItem(articleSpecificKey);
           } else {
             // Remove voto anterior caso estivesse invertido
             if (previousVote === 'like') likes = Math.max(0, likes - 1);
@@ -954,12 +1045,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (type === 'like') {
               likes += 1;
-              confetti({ particleCount: 35, spread: 50, origin: { y: 0.8 } });
+              confetti({ particleCount: 45, spread: 60, origin: { y: 0.75 } });
+
+              // Notificação imediata de parabéns para quem escreveu o artigo
+              if (art.authorEmail) {
+                const voterName = currentUser?.displayName || 'Um usuário da base';
+                addNotification({
+                  userEmail: art.authorEmail,
+                  type: 'SYSTEM',
+                  title: '🎉 Parabéns! Novo Like Conquistado!',
+                  message: `${voterName} curtiu seu artigo "${art.title}"! Seu conhecimento está ajudando toda a equipe.`,
+                  articleId: art.id,
+                  articleTitle: art.title,
+                  pointsGained: 5,
+                  authorName: art.authorName,
+                });
+              }
             } else {
               dislikes += 1;
             }
-            localStorage.setItem(storageKey, type);
+            userVotesMap[articleId] = type;
+            localStorage.setItem(articleSpecificKey, type);
           }
+
+          try {
+            localStorage.setItem(userVoteHistoryKey, JSON.stringify(userVotesMap));
+          } catch {}
 
           const updated = { ...art, likesCount: likes, dislikesCount: dislikes };
           if (selectedArticle?.id === articleId) setSelectedArticle(updated);
@@ -975,6 +1086,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return art;
       })
     );
+  };
+
+  // Estatísticas de Engajamento Bidirecional de Likes & Deslikes
+  const getUserEngagementStats = (email?: string) => {
+    const targetEmail = (email || currentUser?.email || '').toLowerCase().trim();
+    if (!targetEmail) {
+      return {
+        receivedLikes: 0,
+        receivedDislikes: 0,
+        givenLikes: 0,
+        givenDislikes: 0,
+        authoredArticles: [],
+      };
+    }
+
+    const authoredArticles = articles.filter(
+      (a) => a.authorEmail && a.authorEmail.toLowerCase().trim() === targetEmail
+    );
+
+    const receivedLikes = authoredArticles.reduce((acc, a) => acc + (a.likesCount || 0), 0);
+    const receivedDislikes = authoredArticles.reduce((acc, a) => acc + (a.dislikesCount || 0), 0);
+
+    let givenLikes = 0;
+    let givenDislikes = 0;
+    try {
+      const s = localStorage.getItem(`conciliador_user_votes_${targetEmail}`);
+      if (s) {
+        const votes: Record<string, 'like' | 'dislike'> = JSON.parse(s);
+        Object.values(votes).forEach((v) => {
+          if (v === 'like') givenLikes++;
+          if (v === 'dislike') givenDislikes++;
+        });
+      }
+    } catch {}
+
+    return {
+      receivedLikes,
+      receivedDislikes,
+      givenLikes,
+      givenDislikes,
+      authoredArticles,
+    };
+  };
+
+  // Atualização de Foto de Perfil & Puxar Foto da Conta Google
+  const updateUserPhoto = async (newPhotoURL: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    const cleanUrl = newPhotoURL.trim();
+    const updatedUser: UserProfile = { ...currentUser, photoURL: cleanUrl || undefined };
+
+    setCurrentUser(updatedUser);
+    try {
+      localStorage.setItem('conciliador_current_user_v3', JSON.stringify(updatedUser));
+    } catch (e) {
+      console.warn('Erro ao salvar usuário no localStorage:', e);
+    }
+
+    setUsers((prev) => {
+      const next = prev.map((u) =>
+        u.email.toLowerCase().trim() === currentUser.email.toLowerCase().trim()
+          ? { ...u, photoURL: cleanUrl || undefined }
+          : u
+      );
+      try {
+        localStorage.setItem('conciliador_users_v7', JSON.stringify(next));
+      } catch (e) {
+        console.warn('Erro ao salvar usuários no localStorage:', e);
+      }
+      return next;
+    });
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await setDoc(userRef, { photoURL: cleanUrl || null }, { merge: true });
+
+        // Sincroniza em qualquer documento associado a este e-mail
+        if (currentUser.email) {
+          const emailQuery = query(collection(db, 'users'), where('email', '==', currentUser.email.toLowerCase().trim()));
+          const emailSnap = await getDocs(emailQuery);
+          for (const docSnap of emailSnap.docs) {
+            await setDoc(docSnap.ref, { photoURL: cleanUrl || null }, { merge: true }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao atualizar foto no Firestore:', e);
+      }
+    }
+
+    if (auth?.currentUser && cleanUrl.startsWith('http')) {
+      try {
+        await updateProfile(auth.currentUser, { photoURL: cleanUrl });
+      } catch (e) {
+        console.warn('Erro ao atualizar foto no Firebase Auth:', e);
+      }
+    }
+
+    return true;
+  };
+
+  const pullGooglePhoto = (): string | null => {
+    if (auth?.currentUser?.photoURL) {
+      return auth.currentUser.photoURL;
+    }
+    const providerGoogle = auth?.currentUser?.providerData?.find(
+      (p) => p.photoURL && (p.providerId === 'google.com' || p.providerId.includes('google'))
+    );
+    if (providerGoogle?.photoURL) {
+      return providerGoogle.photoURL;
+    }
+    return null;
   };
 
   // Propor Edição (Colaborador Interno propõe alteração e envia para a Fila Editorial)
@@ -1368,6 +1590,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Exclusão de artigo (Acesso restrito a Administradores)
+  const deleteArticle = async (articleId: string): Promise<void> => {
+    const target = articles.find((a) => a.id === articleId);
+
+    // 1. Marca no blacklist definitivo de artigos deletados
+    addDeletedArticleId(articleId);
+
+    // 2. Se o artigo excluído estiver selecionado na tela, reseta a seleção
+    if (selectedArticle?.id === articleId) {
+      setSelectedArticle(null);
+    }
+
+    // 3. Remove do estado em memória
+    setArticles((prev) => prev.filter((art) => art.id !== articleId));
+
+    // 4. Atualiza imediatamente o localStorage para não reaparecer no refresh
+    try {
+      const saved = localStorage.getItem('conciliador_articles_v8');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((c: any) => c.id !== articleId);
+          localStorage.setItem('conciliador_articles_v8', JSON.stringify(filtered));
+        }
+      }
+    } catch {}
+
+    // 5. Exclui do Firestore se conectado
+    if (isFirebaseConfigured) {
+      await deleteArticleFromFirestore(articleId).catch((err) => {
+        console.warn('Erro ao excluir artigo do Firestore:', err);
+      });
+    }
+
+    addNotification({
+      type: 'SYSTEM',
+      title: '🗑️ Artigo Excluído',
+      message: `O artigo "${target?.title || articleId}" foi excluído permanentemente.`,
+    });
+  };
+
   // Julgamento editorial
   const submitReview = (
     articleId: string,
@@ -1568,13 +1831,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Métricas de Desempenho Editorial (Estritamente Colaboradores Internos da Conciliador Contábil)
   const getUserPerformances = (): UserPerformance[] => {
     return users
-      .filter((u) => {
-        const isClient =
-          u.role === 'READER' ||
-          u.userType === 'EXTERNAL' ||
-          !u.email.toLowerCase().endsWith('@conciliadorcontabil.com.br');
-        return !isClient;
-      })
+      .filter((u) => isInternalUser(u))
       .map((u) => {
         const userArticles = articles.filter((a) => a.authorEmail.toLowerCase() === u.email.toLowerCase());
         const submittedCount = userArticles.length;
@@ -1750,6 +2007,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         proposeArticleEdit,
         createArticle,
         updateArticleContent,
+        deleteArticle,
         submitReview,
         addArticleComment,
         incrementArticleView,
@@ -1782,6 +2040,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         celebrationModal,
         triggerCelebration,
         closeCelebrationModal,
+        updateUserPhoto,
+        pullGooglePhoto,
+        getUserEngagementStats,
       }}
     >
       {children}

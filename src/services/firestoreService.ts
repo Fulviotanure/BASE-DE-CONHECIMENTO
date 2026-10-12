@@ -66,6 +66,12 @@ export async function updateArticleInFirestore(
   });
 }
 
+export async function deleteArticleFromFirestore(articleId: string): Promise<void> {
+  if (!db) return;
+  const docRef = doc(db, 'articles', articleId);
+  await deleteDoc(docRef);
+}
+
 // ----------------------------------------------------
 // Usuários (Painel RBAC do Fulvio)
 // ----------------------------------------------------

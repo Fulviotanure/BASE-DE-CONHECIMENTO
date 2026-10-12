@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Send,
   X,
@@ -251,13 +251,23 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
   const lastMessageRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Perguntas rápidas iniciais de sugestão
-  const defaultQuickReplies = [
-    'Como conciliar extrato bancário?',
-    'Como criar um novo artigo?',
-    'Como funciona o sistema de patentes?',
-    'Quais ferramentas estão disponíveis?',
-  ];
+  // Perguntas rápidas iniciais de sugestão (Patentes e redação exclusivas para equipe interna)
+  const defaultQuickReplies = useMemo(() => {
+    if (isInternal) {
+      return [
+        'Como conciliar extrato bancário?',
+        'Como criar um novo artigo?',
+        'Como funciona o sistema de patentes?',
+        'Quais ferramentas estão disponíveis?',
+      ];
+    }
+    return [
+      'Como conciliar extrato bancário?',
+      'Quais ferramentas estão disponíveis?',
+      'Como buscar um manual na base?',
+      'O que fazer em caso de dúvidas?',
+    ];
+  }, [isInternal]);
 
   // Histórico de mensagens da conversa
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -267,7 +277,17 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
         sender: 'bot',
         text: `Olá! Eu sou o **ConciliBot** 🤖✨, seu assistente inteligente na Base de Conhecimento do Conciliador Contábil!\n\nEstou aqui para tirar dúvidas sobre processos, regras de conciliação e rotinas da equipe.\n\n**O que posso te ajudar a resolver hoje?**`,
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        quickReplies: defaultQuickReplies,
+        quickReplies: isInternal ? [
+          'Como conciliar extrato bancário?',
+          'Como criar um novo artigo?',
+          'Como funciona o sistema de patentes?',
+          'Quais ferramentas estão disponíveis?',
+        ] : [
+          'Como conciliar extrato bancário?',
+          'Quais ferramentas estão disponíveis?',
+          'Como buscar um manual na base?',
+          'O que fazer em caso de dúvidas?',
+        ],
       },
     ];
   });
@@ -516,6 +536,22 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
       };
     }
 
+    // 3.1 Tratamento para Patentes & Gamificação (Regra: Patente é exclusiva para colaboradores internos)
+    if (cleanQuery.includes('patente') || cleanQuery.includes('patentes') || cleanQuery.includes('gamifica')) {
+      if (!isInternal) {
+        return {
+          text: `O **Sistema de Patentes e Gamificação** é um recurso interno exclusivo para os colaboradores da equipe da Conciliador Contábil, utilizado para reconhecer a criação e revisão técnica dos manuais.\n\nComo leitor externo, você tem acesso irrestrito para pesquisar, estudar e utilizar todos os artigos e tutoriais da base de conhecimento! 📖✨`,
+          articles: [],
+          quickReplies: defaultQuickReplies,
+        };
+      }
+      return {
+        text: `O **Sistema de Patentes** da Conciliador Contábil reconhece e premia os colaboradores internos pelo engajamento e contribuição na Base de Conhecimento! 🎖️\n\n**Como pontuar:**\n• **+100 pontos** por artigo aprovado e publicado\n• **+50 pontos** por artigo submetido em análise\n• **+30 pontos** por revisão técnica realizada\n• **+20 pontos** por ajuste atendido\n\n**Hierarquia de Patentes:**\n1. 🌱 **Aspirante do Saber** (0 a 99 pts)\n2. 🥉 **Redator Bronze** (100 a 299 pts)\n3. 🥈 **Escritor Prata** (300 a 599 pts)\n4. 🥇 **Mestre do Conteúdo Ouro** (600 a 999 pts)\n5. 👑 **Guardião Lendário** (1.000+ pts)\n\nVocê pode acompanhar sua evolução no topo do cabeçalho ou na aba **Dashboard > Usuários & Patentes**!`,
+        articles: [],
+        quickReplies: defaultQuickReplies,
+      };
+    }
+
     // 4. Busca Semântica Ponderada nos Artigos da Base
     const searchTerms = cleanQuery
       .replace(/[?.,!;:]/g, '')
@@ -707,7 +743,7 @@ ${contextArticles}`;
         isAiGenerated: false,
         quickReplies: [
           `Ver mais sobre ${articleCategory || 'este módulo'}`,
-          'Como criar um novo artigo?',
+          isInternal ? 'Como criar um novo artigo?' : 'Como buscar outros manuais?',
           'Fazer outra pergunta',
         ],
       };

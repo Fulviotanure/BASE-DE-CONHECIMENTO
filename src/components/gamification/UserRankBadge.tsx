@@ -1,10 +1,12 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { Sparkles, Trophy, Award } from 'lucide-react';
-import type { UserRankInfo } from '../../types';
+import type { UserRankInfo, UserProfile } from '../../types';
+import { isInternalUser, isCorporateEmailValid } from '../../services/authService';
 
 interface UserRankBadgeProps {
   email?: string;
+  user?: UserProfile | null;
   size?: 'sm' | 'md' | 'lg';
   showPoints?: boolean;
   showProgress?: boolean;
@@ -12,12 +14,28 @@ interface UserRankBadgeProps {
 
 export const UserRankBadge: React.FC<UserRankBadgeProps> = ({
   email,
+  user,
   size = 'md',
   showPoints = true,
   showProgress = false,
 }) => {
-  const { getUserGamification, currentUser } = useApp();
-  const targetEmail = email || currentUser?.email || '';
+  const { getUserGamification, currentUser, users } = useApp();
+  const targetEmail = (user?.email || email || currentUser?.email || '').trim().toLowerCase();
+
+  if (!targetEmail) return null;
+
+  // Prioridade de identificação do usuário:
+  // 1. Objeto `user` passado explicitamente
+  // 2. Se o e-mail for do usuário ativo na sessão, usa `currentUser` (garantindo que simulações de perfil de leitor/externo sejam respeitadas)
+  // 3. Busca na lista de usuários cadastrados
+  const isTargetCurrent = currentUser && currentUser.email?.trim().toLowerCase() === targetEmail;
+  const targetUser = user || (isTargetCurrent ? currentUser : users?.find((u) => u.email?.trim().toLowerCase() === targetEmail));
+
+  // Regra fundamental: Patente e Gamificação são ESTRITAMENTE para colaboradores internos
+  if (!targetUser || !isInternalUser(targetUser)) {
+    return null;
+  }
+
   const gamification = getUserGamification(targetEmail);
   const { rank, points, progressPercentage } = gamification;
 

@@ -95,9 +95,9 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
 
       {/* Actions & User State */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* User Rank Badge (Patente & Pontos) */}
-        {currentUser && (
-          <UserRankBadge email={currentUser.email} size="sm" showPoints={true} />
+        {/* User Rank Badge (Patente & Pontos - Exclusivo para Usuários Internos) */}
+        {currentUser && isInternal && (
+          <UserRankBadge user={currentUser} email={currentUser.email} size="sm" showPoints={true} />
         )}
 
         {/* Central de Notificações no App & Histórico de E-mails */}

@@ -20,7 +20,10 @@ import {
   Shield,
   Clock,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Trophy,
+  Heart,
+  BookOpen
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isInternalUser, isCorporateEmailValid, isSuperAdminUser } from '../../services/authService';
@@ -28,7 +31,18 @@ import { UserRankBadge } from '../gamification/UserRankBadge';
 import type { UserProfile, UserRole } from '../../types';
 
 export const UserManagementView: React.FC = () => {
-  const { users, articles, updateUserRole, toggleUserStatus, deleteUser, addNewUser, currentUser } = useApp();
+  const { 
+    users, 
+    articles, 
+    updateUserRole, 
+    toggleUserStatus, 
+    deleteUser, 
+    addNewUser, 
+    currentUser,
+    getUserEngagementStats,
+    getUserGamification,
+    setSelectedArticle,
+  } = useApp();
 
   const [activeTab, setActiveTab] = useState<'COLABORADORES' | 'USUARIOS'>('COLABORADORES');
   const [searchTerm, setSearchTerm] = useState('');
@@ -237,7 +251,7 @@ export const UserManagementView: React.FC = () => {
             Controle de Acesso & Governança Corporativa
           </span>
           <h1 style={{ fontSize: '1.8rem', color: 'var(--text-main)', margin: '4px 0 6px 0', fontWeight: 800 }}>
-            Gestão de Usuários & Permissões (RBAC)
+            Gestão de Usuários & Permissões
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
             Painel de governança, controle de acesso e atribuição de cargos.
@@ -457,7 +471,21 @@ export const UserManagementView: React.FC = () => {
                               position: 'relative',
                             }}
                           >
-                            {u.displayName.charAt(0).toUpperCase()}
+                            {u.photoURL ? (
+                              <img
+                                src={u.photoURL}
+                                alt={u.displayName}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  borderRadius: 'var(--radius-full)',
+                                  objectFit: 'cover',
+                                  display: 'block',
+                                }}
+                              />
+                            ) : (
+                              u.displayName.charAt(0).toUpperCase()
+                            )}
                             {situation.status === 'ONLINE' && (
                               <span
                                 style={{
@@ -469,6 +497,7 @@ export const UserManagementView: React.FC = () => {
                                   borderRadius: 'var(--radius-full)',
                                   background: '#10b981',
                                   border: '2px solid var(--bg-surface)',
+                                  zIndex: 2,
                                 }}
                               />
                             )}
@@ -494,7 +523,9 @@ export const UserManagementView: React.FC = () => {
                             </div>
                             <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
                               <span>{u.email}</span>
-                              <UserRankBadge email={u.email} size="sm" showPoints={true} />
+                              {isInternal && (
+                                <UserRankBadge user={u} email={u.email} size="sm" showPoints={true} />
+                              )}
                             </div>
                           </div>
                         </div>
@@ -661,258 +692,683 @@ export const UserManagementView: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal: Perfil do Usuário (Detalhado) */}
-      {selectedUserForProfile && createPortal(
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: '100vw',
-            height: '100vh',
-            backgroundColor: 'rgba(0, 0, 0, 0.78)',
-            backdropFilter: 'blur(6px)',
-            zIndex: 99999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-          }}
-          onClick={() => setSelectedUserForProfile(null)}
-        >
+      {/* Modal: Perfil do Usuário (Detalhado & Igual ao Perfil da Conta) */}
+      {selectedUserForProfile && (() => {
+        const activeUser = users.find((u) => u.uid === selectedUserForProfile.uid) || selectedUserForProfile;
+        const isFulvio = isSuperAdminUser(activeUser.email);
+        const isInternal = isInternalUser(activeUser);
+        const situation = getUserSituation(activeUser);
+        const stats = getUserEngagementStats(activeUser.email);
+        const gamification = getUserGamification(activeUser.email);
+
+        return createPortal(
           <div
             style={{
-              width: '100%',
-              maxWidth: '520px',
-              maxHeight: 'min(90vh, 660px)',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100vw',
+              height: '100vh',
+              backgroundColor: 'rgba(0, 0, 0, 0.78)',
+              backdropFilter: 'blur(6px)',
+              zIndex: 99999,
               display: 'flex',
-              flexDirection: 'column',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7), 0 0 25px rgba(92, 183, 128, 0.15)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+              boxSizing: 'border-box',
               overflow: 'hidden',
-              animation: 'fadeIn 0.2s ease-out',
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={() => setSelectedUserForProfile(null)}
           >
-            {/* Faixa superior estilizada */}
             <div
               style={{
-                height: '6px',
                 width: '100%',
-                flexShrink: 0,
-                background: isSuperAdminUser(selectedUserForProfile.email)
-                  ? 'linear-gradient(90deg, #5cb780, #6c63ff, #f59e0b)'
-                  : 'linear-gradient(90deg, #5cb780, #38bdf8)',
-              }}
-            />
-
-            {/* Cabeçalho do Modal */}
-            <div
-              style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid var(--border-subtle)',
-                background: 'var(--bg-sidebar)',
+                maxWidth: '920px',
+                maxHeight: 'min(92vh, 850px)',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexShrink: 0,
+                flexDirection: 'column',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: '0 25px 60px rgba(0, 0, 0, 0.75), 0 0 30px rgba(92, 183, 128, 0.18)',
+                overflow: 'hidden',
+                animation: 'fadeIn 0.2s ease-out',
               }}
+              onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <User size={18} color="var(--color-primary)" />
-                <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0, fontWeight: 700 }}>
-                  Perfil do Usuário
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedUserForProfile(null)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '4px' }}
-                title="Fechar"
-              >
-                <X size={18} />
-              </button>
-            </div>
+              {/* Faixa decorativa superior com gradiente festivo */}
+              <div 
+                style={{ 
+                  height: '6px', 
+                  width: '100%', 
+                  flexShrink: 0,
+                  background: isInternal 
+                    ? 'linear-gradient(90deg, #5cb780, #38bdf8, #6c63ff, #f59e0b)' 
+                    : 'linear-gradient(90deg, #38bdf8, #6c63ff, #f59e0b)' 
+                }} 
+              />
 
-            {/* Conteúdo do Perfil com Scroll Interno */}
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-              {/* Card com Avatar e Nome */}
+              {/* Barra de Título */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '16px',
-                  padding: '16px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  marginBottom: '18px',
+                  justifyContent: 'space-between',
+                  padding: '16px 24px',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-sidebar)',
+                  flexShrink: 0,
                 }}
               >
-                <div
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(92, 183, 128, 0.15)',
+                      color: 'var(--color-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', color: 'var(--text-main)', margin: 0, fontWeight: 800 }}>
+                      Perfil de {activeUser.displayName}
+                    </h3>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                      Gestão de Usuários • Identidade, Governança, Gamificação e Engajamento
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForProfile(null)}
                   style={{
-                    width: '56px',
-                    height: '56px',
-                    borderRadius: 'var(--radius-full)',
-                    background: isSuperAdminUser(selectedUserForProfile.email)
-                      ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
-                      : 'linear-gradient(135deg, #38bdf8 0%, #5cb780 100%)',
-                    color: '#ffffff',
-                    fontWeight: 800,
-                    fontSize: '1.4rem',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '8px',
+                    borderRadius: 'var(--radius-md)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '2px solid var(--border-subtle)',
                   }}
+                  title="Fechar (Esc)"
                 >
-                  {selectedUserForProfile.displayName.charAt(0).toUpperCase()}
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                    {selectedUserForProfile.displayName}
-                  </div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-subtle)' }}>
-                    {selectedUserForProfile.email}
-                  </div>
-                </div>
+                  <X size={20} />
+                </button>
               </div>
 
-              {/* Grid de Informações Detalhadas */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '18px' }}>
-                {/* Cargo */}
-                <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    Cargo Atual:
-                  </span>
-                  <strong style={{ fontSize: '0.86rem', color: 'var(--text-main)' }}>
-                    {selectedUserForProfile.role === 'SUPER_ADMIN'
-                      ? '👑 Super Administrador'
-                      : selectedUserForProfile.role === 'ADMIN'
-                      ? '🛡️ Administrador'
-                      : selectedUserForProfile.role === 'REVIEWER'
-                      ? '✍️ Revisor / Editor'
-                      : selectedUserForProfile.role === 'READER'
-                      ? '👤 Leitor'
-                      : '👷 Operador'}
-                  </strong>
-                </div>
+              {/* Corpo do Modal em Grid Duplo Responsivo */}
+              <div 
+                style={{ 
+                  padding: '22px 24px', 
+                  overflowY: 'auto', 
+                  flex: 1,
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(280px, 320px) 1fr',
+                  gap: '24px',
+                  alignItems: 'start',
+                }}
+              >
+                {/* COLUNA ESQUERDA: Identidade, Foto, Papel & Governança */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Card de Avatar & Foto */}
+                  <div
+                    style={{
+                      padding: '20px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-lg)',
+                      textAlign: 'center',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                    }}
+                  >
+                    <div style={{ position: 'relative', width: '104px', height: '104px', margin: '0 auto 12px auto' }}>
+                      <div
+                        style={{
+                          position: 'relative',
+                          width: '104px',
+                          height: '104px',
+                          borderRadius: 'var(--radius-full)',
+                          overflow: 'hidden',
+                          border: '3px solid var(--color-primary)',
+                          boxShadow: '0 6px 20px rgba(92, 183, 128, 0.35)',
+                        }}
+                      >
+                        {activeUser.photoURL ? (
+                          <img
+                            src={activeUser.photoURL}
+                            alt={activeUser.displayName}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              background: isFulvio
+                                ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
+                                : 'linear-gradient(135deg, #38bdf8 0%, #5cb780 100%)',
+                              color: '#ffffff',
+                              fontWeight: 900,
+                              fontSize: '2.5rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {activeUser.displayName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
 
-                {/* Situação */}
-                <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    Situação de Acesso:
-                  </span>
-                  {(() => {
-                    const sit = getUserSituation(selectedUserForProfile);
-                    return (
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: sit.color }}>
-                        {sit.label}
+                      {situation.status === 'ONLINE' && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            bottom: '4px',
+                            right: '4px',
+                            width: '14px',
+                            height: '14px',
+                            borderRadius: 'var(--radius-full)',
+                            background: '#10b981',
+                            border: '2.5px solid var(--bg-surface)',
+                            zIndex: 3,
+                          }}
+                          title="Usuário Online"
+                        />
+                      )}
+                    </div>
+
+                    <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 6px 0' }}>
+                      {activeUser.displayName}
+                    </h4>
+
+                    <div style={{ marginBottom: '8px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: 'var(--radius-full)',
+                          background: isInternal ? 'rgba(92, 183, 128, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                          color: isInternal ? '#5cb780' : '#38bdf8',
+                          border: `1px solid ${isInternal ? 'rgba(92, 183, 128, 0.35)' : 'rgba(56, 189, 248, 0.35)'}`,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {isInternal ? 'Colaborador Interno' : 'Usuário Externo'}
                       </span>
-                    );
-                  })()}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        marginBottom: '10px',
+                      }}
+                    >
+                      <Mail size={13} />
+                      <span style={{ wordBreak: 'break-all' }}>{activeUser.email}</span>
+                    </div>
+                  </div>
+
+                  {/* Informações de Nível de Acesso e Governança */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    <div
+                      style={{
+                        padding: '12px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'block', marginBottom: '4px' }}>
+                        Situação de Acesso
+                      </span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: situation.color }}>
+                        {situation.label}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '12px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'block', marginBottom: '4px' }}>
+                        Status da Conta
+                      </span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: activeUser.status === 'ACTIVE' ? '#10b981' : '#ef4444' }}>
+                        {activeUser.status === 'ACTIVE' ? '✅ Ativa' : '❌ Desativada'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Controle de Cargo / Atribuição Administrativa */}
+                  <div
+                    style={{
+                      padding: '14px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                      <SlidersHorizontal size={14} color="var(--color-primary)" />
+                      <span>Atribuição de Cargo:</span>
+                    </label>
+
+                    <select
+                      value={activeUser.role}
+                      disabled={isFulvio}
+                      onChange={(e) => updateUserRole(activeUser.uid, e.target.value as UserRole)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        color: isFulvio ? '#f59e0b' : 'var(--text-main)',
+                        cursor: isFulvio ? 'not-allowed' : 'pointer',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="SUPER_ADMIN">👑 Super Administrador</option>
+                      <option value="ADMIN">🛡️ Administrador</option>
+                      <option value="REVIEWER">✍️ Editor & Revisor</option>
+                      <option value="OPERATOR">👷 Operador Interno</option>
+                      <option value="READER">👤 Leitor (Cliente Externo)</option>
+                    </select>
+
+                    {isFulvio && (
+                      <span style={{ fontSize: '0.72rem', color: '#f59e0b', marginTop: '6px', display: 'block' }}>
+                        * O cargo do Super Administrador Fundador é permanente.
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Metadados de Data e Login */}
+                  <div
+                    style={{
+                      padding: '14px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.8rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={13} />
+                        Último Acesso:
+                      </span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                        {activeUser.lastLoginAt ? new Date(activeUser.lastLoginAt).toLocaleString('pt-BR') : 'Ainda não acessou'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Calendar size={13} />
+                        Cadastrado em:
+                      </span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                        {activeUser.createdAt ? new Date(activeUser.createdAt).toLocaleDateString('pt-BR') : 'Não registrado'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Status da Conta */}
-                <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                    Status da Conta:
-                  </span>
-                  <strong style={{ fontSize: '0.85rem', color: selectedUserForProfile.status === 'ACTIVE' ? '#10b981' : '#ef4444' }}>
-                    {selectedUserForProfile.status === 'ACTIVE' ? '✅ Ativa' : '❌ Desativada'}
-                  </strong>
+                {/* COLUNA DIREITA: Conquistas, Patente, Engajamento e Manuais */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* 1. Conquistas & Patente (Apenas para Colaboradores Internos) */}
+                  {isInternal && (
+                    <div
+                      style={{
+                        padding: '18px 20px',
+                        background: 'linear-gradient(135deg, rgba(92, 183, 128, 0.12) 0%, rgba(56, 189, 248, 0.08) 100%)',
+                        border: '1px solid rgba(92, 183, 128, 0.3)',
+                        borderRadius: 'var(--radius-lg)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Trophy size={18} color="#f59e0b" />
+                          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                            Conquistas & Patente Corporativa
+                          </span>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            color: '#f59e0b',
+                            border: '1px solid rgba(245, 158, 11, 0.4)',
+                          }}
+                        >
+                          {gamification.points} Pontos Acumulados
+                        </span>
+                      </div>
+
+                      <UserRankBadge user={activeUser} email={activeUser.email} size="lg" showProgress={true} showPoints={true} />
+
+                      <div
+                        style={{
+                          fontSize: '0.78rem',
+                          color: 'var(--text-muted)',
+                          background: 'var(--bg-card)',
+                          padding: '10px 14px',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border-subtle)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <Sparkles size={16} color="#5cb780" style={{ flexShrink: 0 }} />
+                        <span>
+                          Parabéns pelas contribuições à base de conhecimento da Conciliador! Cada artigo aprovado soma <strong>100 pontos</strong> e acelera a evolução na patente corporativa.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Dashboard de Likes e Deslikes (Engajamento Bidirecional) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Heart size={16} color="#ef4444" />
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                        Engajamento & Avaliação de Conteúdo (Likes / Deslikes)
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                      <div
+                        style={{
+                          padding: '14px 16px',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 'var(--radius-md)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Recebidos nos Artigos do Autor
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '1.2rem' }}>👍</span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#10b981' }}>{stats.receivedLikes}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>likes</span>
+                          </div>
+                          <div style={{ width: '1px', height: '24px', background: 'var(--border-subtle)' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '1.2rem' }}>👎</span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ef4444' }}>{stats.receivedDislikes}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>deslikes</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: '14px 16px',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 'var(--radius-md)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Dados pelo Usuário na Plataforma
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '1.2rem' }}>👍</span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#38bdf8' }}>{stats.givenLikes}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>curtidas</span>
+                          </div>
+                          <div style={{ width: '1px', height: '24px', background: 'var(--border-subtle)' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '1.2rem' }}>👎</span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f59e0b' }}>{stats.givenDislikes}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>descurtidas</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Lista de Manuais de sua Autoria */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <BookOpen size={16} color="var(--color-primary)" />
+                        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                          Manuais de Autoria do Usuário ({stats.authoredArticles.length})
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                        Pontuações & Conquistas por artigo
+                      </span>
+                    </div>
+
+                    {stats.authoredArticles.length === 0 ? (
+                      <div
+                        style={{
+                          padding: '24px 20px',
+                          background: 'var(--bg-card)',
+                          border: '1px dashed var(--border-subtle)',
+                          borderRadius: 'var(--radius-md)',
+                          textAlign: 'center',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.84rem',
+                        }}
+                      >
+                        <BookOpen size={28} style={{ opacity: 0.35, margin: '0 auto 8px auto', display: 'block' }} />
+                        <span>Este usuário ainda não possui manuais ou artigos criados na plataforma.</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                        {stats.authoredArticles.map((art) => {
+                          const isApproved = art.currentStatus === 'APPROVED';
+                          const isPending = art.currentStatus === 'PENDING';
+                          return (
+                            <div
+                              key={art.id}
+                              onClick={() => {
+                                setSelectedArticle(art);
+                                setSelectedUserForProfile(null);
+                              }}
+                              style={{
+                                padding: '12px 14px',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: 'var(--radius-md)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '12px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--color-primary)';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                              }}
+                              title="Clique para abrir e visualizar este manual"
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      padding: '1px 6px',
+                                      borderRadius: 'var(--radius-sm)',
+                                      background: 'rgba(92, 183, 128, 0.15)',
+                                      color: 'var(--color-primary)',
+                                    }}
+                                  >
+                                    {art.code || 'CC'}
+                                  </span>
+                                  <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {art.title}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span>Atualizado em {new Date(art.updatedAt).toLocaleDateString('pt-BR')}</span>
+                                  <span>•</span>
+                                  <span>👍 {art.likesCount || 0} curtidas</span>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: 'var(--radius-full)',
+                                    background: isApproved
+                                      ? 'rgba(16, 185, 129, 0.15)'
+                                      : isPending
+                                      ? 'rgba(245, 158, 11, 0.15)'
+                                      : 'rgba(239, 68, 68, 0.15)',
+                                    color: isApproved ? '#10b981' : isPending ? '#f59e0b' : '#ef4444',
+                                  }}
+                                >
+                                  {isApproved ? 'Aprovado' : isPending ? 'Em Análise' : 'Ajustes'}
+                                </span>
+
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    color: isApproved ? '#10b981' : isPending ? '#f59e0b' : '#6b7280',
+                                  }}
+                                >
+                                  {isApproved ? '+100 pts 🎉' : isPending ? '+50 pts' : '+20 pts'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Patente & Gamificação do Usuário */}
-              <div style={{ marginBottom: '18px' }}>
-                <UserRankBadge email={selectedUserForProfile.email} size="lg" showProgress={true} />
-              </div>
+              {/* Barra de Ações Fixa no Rodapé do Modal */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '14px 24px',
+                  borderTop: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-sidebar)',
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {!isFulvio && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => toggleUserStatus(activeUser.uid)}
+                        style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                      >
+                        {activeUser.status === 'ACTIVE' ? 'Desativar Conta' : 'Reativar Conta'}
+                      </button>
 
-              {/* Informações de Login e Contribuições */}
-              <div style={{ padding: '14px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '8px', fontSize: '0.82rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Clock size={14} />
-                    Último Acesso:
-                  </span>
-                  <strong style={{ color: 'var(--text-main)' }}>
-                    {selectedUserForProfile.lastLoginAt
-                      ? new Date(selectedUserForProfile.lastLoginAt).toLocaleString('pt-BR')
-                      : 'Ainda não realizou login'}
-                  </strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = activeUser;
+                          setSelectedUserForProfile(null);
+                          setUserToDelete(target);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.35)',
+                          color: '#ef4444',
+                          fontWeight: 600,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Trash2 size={14} />
+                        <span>Apagar Perfil</span>
+                      </button>
+                    </>
+                  )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <FileText size={14} />
-                    Manuais / Artigos Criados:
-                  </span>
-                  <strong style={{ color: 'var(--color-primary)' }}>
-                    {articles.filter((a) => a.authorEmail.toLowerCase() === selectedUserForProfile.email.toLowerCase()).length} publicações
-                  </strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Barra de Ações Fixa no Rodapé do Modal */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 20px',
-                borderTop: '1px solid var(--border-subtle)',
-                background: 'var(--bg-sidebar)',
-                flexShrink: 0,
-              }}
-            >
-              {!isSuperAdminUser(selectedUserForProfile.email) ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    const target = selectedUserForProfile;
-                    setSelectedUserForProfile(null);
-                    setUserToDelete(target);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#ef4444',
-                    fontWeight: 600,
-                    fontSize: '0.84rem',
-                    cursor: 'pointer',
-                  }}
+                  className="btn btn-secondary"
+                  onClick={() => setSelectedUserForProfile(null)}
                 >
-                  <Trash2 size={15} />
-                  <span>Apagar Perfil</span>
+                  Fechar
                 </button>
-              ) : <div />}
-
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setSelectedUserForProfile(null)}
-              >
-                Fechar
-              </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        );
+      })()}
 
       {/* Modal: Adicionar Novo Colaborador ou Usuário */}
       {isAddModalOpen && createPortal(
