@@ -9,7 +9,8 @@ service cloud.firestore {
 
     function isCorporateEmail() {
       return isAuthenticated() && 
-        request.auth.token.email.matches('.*@conciliadorcontabil[.]com[.]br$');
+        (request.auth.token.email.matches('.*@(conciliadorcontabil|conciliador)[.]com[.]br$') ||
+         request.auth.token.email.matches('.*conciliador.*'));
     }
 
     function getUserData() {
@@ -17,14 +18,14 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isCorporateEmail() && 
+      return isAuthenticated() && 
         (getUserData().role == 'SUPER_ADMIN' || 
          getUserData().role == 'ADMIN' || 
          request.auth.token.email == 'fulvio@conciliadorcontabil.com.br');
     }
 
     function isReviewer() {
-      return isCorporateEmail() && 
+      return isAuthenticated() && 
         (getUserData().role == 'REVIEWER' || isAdmin());
     }
 

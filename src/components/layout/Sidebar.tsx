@@ -6,8 +6,8 @@ import {
   Wrench,
   BarChart3,
   Users,
-  PlusCircle,
   ExternalLink,
+  Layers,
   Globe,
   Lock,
   Compass,
@@ -25,8 +25,11 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeft,
+  FileText,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isInternalUser, isExternalUser } from '../../services/authService';
+import { CategoryIcon, getCategoryThemeColors } from '../../utils/categoryIcons';
 import type { Article } from '../../types';
 
 interface SidebarProps {
@@ -57,6 +60,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
     'cat-1': true,
   });
 
+  // Estado para expandir e recolher grupos de navegação com subitens (ex: Dashboard & Métricas)
+  const [openNavGroupIds, setOpenNavGroupIds] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('conciliador_open_nav_groups');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return { dashboard: true };
+  });
+
+  const toggleNavGroup = (groupId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setOpenNavGroupIds((prev) => {
+      const next = { ...prev, [groupId]: !prev[groupId] };
+      localStorage.setItem('conciliador_open_nav_groups', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Auto-expandir grupo ao navegar diretamente para ele
+  useEffect(() => {
+    if (activeView === 'dashboard' || activeView === 'dashboard-articles' || activeView === 'dashboard-users') {
+      setOpenNavGroupIds((prev) => {
+        if (!prev.dashboard) {
+          const next = { ...prev, dashboard: true };
+          localStorage.setItem('conciliador_open_nav_groups', JSON.stringify(next));
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [activeView]);
+
   // Auto-expandir a categoria do artigo selecionado
   useEffect(() => {
     if (selectedArticle) {
@@ -82,56 +121,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
     incrementArticleView(art.id);
   };
 
-  // Cores temáticas por módulo com leve transparência (no padrão dos cards da tela inicial)
+  // Cores temáticas por módulo com leve transparência
   const getCategoryTheme = (iconName: string) => {
-    switch (iconName) {
-      case 'Compass': return { color: '#5cb780', bg: 'rgba(92, 183, 128, 0.12)', border: 'rgba(92, 183, 128, 0.28)' };
-      case 'Database': return { color: '#818cf8', bg: 'rgba(129, 140, 248, 0.12)', border: 'rgba(129, 140, 248, 0.28)' };
-      case 'FileDown': return { color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.12)', border: 'rgba(56, 189, 248, 0.28)' };
-      case 'Sliders': return { color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.28)' };
-      case 'Scale': return { color: '#34d399', bg: 'rgba(52, 211, 153, 0.12)', border: 'rgba(52, 211, 153, 0.28)' };
-      case 'FileUp': return { color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.12)', border: 'rgba(167, 139, 250, 0.28)' };
-      case 'Globe': return { color: '#22d3ee', bg: 'rgba(34, 211, 238, 0.12)', border: 'rgba(34, 211, 238, 0.28)' };
-      case 'ArrowLeftRight': return { color: '#f472b6', bg: 'rgba(244, 114, 182, 0.12)', border: 'rgba(244, 114, 182, 0.28)' };
-      case 'HelpCircle': return { color: '#fb923c', bg: 'rgba(251, 146, 60, 0.12)', border: 'rgba(251, 146, 60, 0.28)' };
-      case 'LifeBuoy': return { color: '#f87171', bg: 'rgba(248, 113, 113, 0.12)', border: 'rgba(248, 113, 113, 0.28)' };
-      case 'BookMarked': return { color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.12)', border: 'rgba(56, 189, 248, 0.28)' };
-      case 'Terminal': return { color: '#4ade80', bg: 'rgba(74, 222, 128, 0.12)', border: 'rgba(74, 222, 128, 0.28)' };
-      default: return { color: '#5cb780', bg: 'rgba(92, 183, 128, 0.12)', border: 'rgba(92, 183, 128, 0.28)' };
-    }
+    return getCategoryThemeColors(iconName);
   };
 
-  // Ícones por módulo
+  // Ícones por módulo com suporte a qualquer ícone Lucide
   const getCategoryIcon = (iconName: string, size = 16) => {
-    switch (iconName) {
-      case 'Compass': return <Compass size={size} color="#5cb780" />;
-      case 'Database': return <Database size={size} color="#6c63ff" />;
-      case 'FileDown': return <FileDown size={size} color="#3b82f6" />;
-      case 'Sliders': return <Sliders size={size} color="#f59e0b" />;
-      case 'Scale': return <Scale size={size} color="#10b981" />;
-      case 'FileUp': return <FileUp size={size} color="#8b5cf6" />;
-      case 'Globe': return <Globe size={size} color="#06b6d4" />;
-      case 'ArrowLeftRight': return <ArrowLeftRight size={size} color="#ec4899" />;
-      case 'HelpCircle': return <HelpCircle size={size} color="#f97316" />;
-      case 'LifeBuoy': return <LifeBuoy size={size} color="#ef4444" />;
-      case 'BookMarked': return <BookMarked size={size} color="#38bdf8" />;
-      case 'Terminal': return <Terminal size={size} color="#10b981" />;
-      default: return <Compass size={size} color="#5cb780" />;
-    }
+    const theme = getCategoryThemeColors(iconName);
+    return <CategoryIcon iconName={iconName} size={size} color={theme.color} />;
   };
 
-  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
-  const isInternal = !isExternal && (currentUser?.userType === 'INTERNAL' || Boolean(currentUser?.email?.includes('conciliadorcontabil.com.br')));
+  const isInternal = isInternalUser(currentUser);
+  const isExternal = isExternalUser(currentUser);
   const canReview = isInternal && (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.role === 'REVIEWER');
   const isAdmin = isInternal && (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN');
 
-  // Playbooks são estritamente para colaboradores internos (nunca visíveis para clientes)
-  const isPlaybookCategory = (cat: { id: string; title: string }) =>
+  // Módulos internos são estritamente para colaboradores internos (nunca visíveis para clientes/leitores externos)
+  const isInternalCategory = (cat: { id: string; title: string; accessLevel?: 'INTERNAL' | 'ALL' }) =>
+    cat.accessLevel === 'INTERNAL' ||
     cat.title.toLowerCase().includes('playbook') ||
     cat.id === 'cat-11' ||
     cat.id === 'cat-12';
 
-  const displayedCategories = categories.filter((c) => !isExternal || !isPlaybookCategory(c));
+  const displayedCategories = categories.filter((c) => !isExternal || !isInternalCategory(c));
 
   const pendingCount = articles.filter((a) => a.currentStatus === 'PENDING').length;
   const myAdjustmentsCount = articles.filter(
@@ -168,8 +181,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
       id: 'tools',
       label: 'Central de Ferramentas',
       icon: Wrench,
-      badge: 'Softwares',
-      badgeColor: 'var(--color-secondary)',
+      badge: null,
     },
     ...(canReview
       ? [
@@ -178,6 +190,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
             label: 'Dashboard & Métricas',
             icon: BarChart3,
             badge: null,
+            subItems: [
+              { id: 'dashboard-articles', label: 'Artigos', icon: FileText },
+              { id: 'dashboard-users', label: 'Usuários', icon: Users },
+            ],
           },
         ]
       : []),
@@ -187,8 +203,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
             id: 'users',
             label: 'Gestão de Usuários (RBAC)',
             icon: Users,
-            badge: 'Admin',
-            badgeColor: 'var(--color-primary)',
+            badge: null,
+          },
+          {
+            id: 'modules',
+            label: 'Gestão de Módulos',
+            icon: Layers,
+            badge: null,
           },
         ]
       : []),
@@ -202,6 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
       icon: BookOpen,
       badge: null as string | null,
       badgeColor: undefined as string | undefined,
+      subItems: undefined as { id: string; label: string; icon: any }[] | undefined,
     },
   ];
 
@@ -300,93 +322,179 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
           </button>
         </div>
 
-        {/* Botão Novo Artigo (Apenas Colaboradores Internos) */}
-        {isInternal && (
-          <button
-            type="button"
-            onClick={onOpenNewArticle}
-            className="btn btn-primary"
-            style={{
-              width: '100%',
-              padding: isCollapsed ? '9px 0' : '10px 14px',
-              marginBottom: '18px',
-              borderRadius: 'var(--radius-md)',
-              fontWeight: 700,
-              fontSize: '0.86rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: isCollapsed ? '0' : '8px',
-            }}
-            title={isCollapsed ? 'Redigir Novo Artigo' : undefined}
-          >
-            <PlusCircle size={18} />
-            {!isCollapsed && <span>Redigir Novo Artigo</span>}
-          </button>
-        )}
-
         {/* Links Principais de Navegação */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           {currentNavItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeView === item.id;
+            const isDashboardGroup = item.id === 'dashboard';
+            const isActive = isDashboardGroup
+              ? (activeView === 'dashboard' || activeView === 'dashboard-articles' || activeView === 'dashboard-users')
+              : activeView === item.id;
+            const hasSubItems = Boolean(item.subItems && item.subItems.length > 0);
+            const isGroupOpen = !!openNavGroupIds[item.id];
+
             return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setActiveView(item.id);
-                  if (item.id === 'kb') {
-                    setSelectedArticle(null);
-                  }
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: isCollapsed ? 'center' : 'space-between',
-                  padding: isCollapsed ? '10px 0' : '9px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.86rem',
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive 
-                    ? (isDark ? 'var(--color-primary)' : '#166534') 
-                    : (isDark ? 'var(--text-main)' : '#0f172a'),
-                  background: isActive 
-                    ? (isDark ? 'var(--color-primary-subtle)' : 'rgba(92, 183, 128, 0.18)') 
-                    : 'transparent',
-                  transition: 'all 0.18s ease',
-                  textAlign: 'left',
-                  border: 'none',
-                  cursor: 'pointer',
-                  width: '100%',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = isDark ? 'var(--bg-card-hover)' : 'rgba(0, 0, 0, 0.05)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = 'transparent';
-                }}
-                title={isCollapsed ? item.label : undefined}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Icon size={18} color={isActive ? (isDark ? 'var(--color-primary)' : '#166534') : (isDark ? 'var(--text-muted)' : '#64748b')} />
-                  {!isCollapsed && <span>{item.label}</span>}
-                </div>
-                {!isCollapsed && item.badge && (
-                  <span
+              <React.Fragment key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (hasSubItems) {
+                      if (isCollapsed) {
+                        if (isDashboardGroup) {
+                          setActiveView('dashboard-articles');
+                        } else {
+                          setActiveView(item.id);
+                        }
+                        return;
+                      }
+
+                      // Se já está na aba ativa e aberto, clicar alterna (recolhe)
+                      if (isActive && isGroupOpen) {
+                        toggleNavGroup(item.id);
+                      } else {
+                        // Se estava fechado, expande
+                        if (!isGroupOpen) {
+                          toggleNavGroup(item.id);
+                        }
+                        // Navega para a visão padrão caso não esteja já nela
+                        if (isDashboardGroup) {
+                          if (activeView !== 'dashboard-articles' && activeView !== 'dashboard-users') {
+                            setActiveView('dashboard-articles');
+                          }
+                        } else {
+                          setActiveView(item.id);
+                        }
+                      }
+                    } else {
+                      setActiveView(item.id);
+                      if (item.id === 'kb') {
+                        setSelectedArticle(null);
+                      }
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: isCollapsed ? 'center' : 'space-between',
+                    padding: isCollapsed ? '10px 0' : '9px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '0.86rem',
+                    fontWeight: isActive ? 700 : 500,
+                    color: isActive 
+                      ? (isDark ? 'var(--color-primary)' : '#166534') 
+                      : (isDark ? 'var(--text-main)' : '#0f172a'),
+                    background: isActive 
+                      ? (isDark ? 'var(--color-primary-subtle)' : 'rgba(92, 183, 128, 0.18)') 
+                      : 'transparent',
+                    transition: 'all 0.18s ease',
+                    textAlign: 'left',
+                    border: 'none',
+                    cursor: 'pointer',
+                    width: '100%',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.background = isDark ? 'var(--bg-card-hover)' : 'rgba(0, 0, 0, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.background = 'transparent';
+                  }}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Icon size={18} color={isActive ? (isDark ? 'var(--color-primary)' : '#166534') : (isDark ? 'var(--text-muted)' : '#64748b')} />
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </div>
+                  {!isCollapsed && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {item.badge && (
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: 'var(--radius-full)',
+                            background: item.badgeColor || 'var(--color-primary)',
+                            color: '#ffffff',
+                          }}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                      {hasSubItems && (
+                        <span
+                          onClick={(e) => toggleNavGroup(item.id, e)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: isActive ? (isDark ? 'var(--color-primary)' : '#166534') : 'var(--text-subtle)',
+                            padding: '2px 3px',
+                            borderRadius: '4px',
+                            transition: 'all 0.15s ease',
+                          }}
+                          title={isGroupOpen ? 'Recolher submenu' : 'Expandir submenu'}
+                        >
+                          {isGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+
+                {/* Sub-itens de navegação na barra lateral (Expandir e Recolher) */}
+                {!isCollapsed && hasSubItems && isGroupOpen && (
+                  <div
                     style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      padding: '2px 7px',
-                      borderRadius: 'var(--radius-full)',
-                      background: item.badgeColor || 'var(--color-primary)',
-                      color: '#ffffff',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                      paddingLeft: '24px',
+                      margin: '2px 0 4px 0',
+                      animation: 'fadeIn 0.15s ease',
                     }}
                   >
-                    {item.badge}
-                  </span>
+                    {item.subItems?.map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive =
+                        (sub.id === 'dashboard-articles' && (activeView === 'dashboard' || activeView === 'dashboard-articles')) ||
+                        (sub.id === 'dashboard-users' && activeView === 'dashboard-users');
+
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onClick={() => setActiveView(sub.id)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 10px',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '0.80rem',
+                            fontWeight: isSubActive ? 700 : 500,
+                            color: isSubActive ? 'var(--color-primary)' : (isDark ? 'var(--text-muted)' : '#64748b'),
+                            background: isSubActive ? (isDark ? 'rgba(92, 183, 128, 0.12)' : 'rgba(92, 183, 128, 0.14)') : 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.15s ease',
+                            width: '100%',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSubActive) e.currentTarget.style.background = isDark ? 'var(--bg-card-hover)' : 'rgba(0, 0, 0, 0.04)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSubActive) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <SubIcon size={14} color={isSubActive ? 'var(--color-primary)' : (isDark ? 'var(--text-subtle)' : '#94a3b8')} />
+                          <span>{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </button>
+              </React.Fragment>
             );
           })}
         </nav>
@@ -396,7 +504,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
             Aparece abaixo do último item de Gestão de Usuários
             quando na Base de Conhecimento
             ================================================================== */}
-        {(activeView === 'kb' || activeView === 'external-portal') && (
+        {activeView === 'kb' && (
           <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
             {!isCollapsed ? (
               <div style={{ padding: '0 6px 8px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -11,7 +11,6 @@ import {
   AlertCircle,
   X,
   LogIn,
-  UserPlus
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -407,6 +406,8 @@ export const LoginPageView: React.FC<LoginPageViewProps> = () => {
               <LogIn size={17} />
               <span>Entrar</span>
             </button>
+
+
 
           </div>
         </div>

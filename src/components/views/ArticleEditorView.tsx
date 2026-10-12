@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useArticleImageFallback } from '../../utils/imageFallback';
 import {
   FileEdit,
@@ -21,6 +22,10 @@ import {
   Quote,
   Table,
   Image as ImageIcon,
+  ImagePlus,
+  Link as LinkIcon,
+  Film,
+  ExternalLink,
   Paperclip,
   Upload,
   Trash2,
@@ -64,25 +69,29 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   const [subcategoryId, setSubcategoryId] = useState(editingArticle?.subcategoryId || '');
   const [tagInput, setTagInput] = useState(editingArticle?.tags.join(', ') || '');
 
-  // Verificação de categoria Playbook (sempre restrito a colaboradores internos)
+  // Verificação de categoria Interna ou Playbook (sempre restrito a colaboradores internos)
   const selectedCatObj = categories.find((c) => c.id === categoryId);
-  const isPlaybookCategory = Boolean(
+  const isInternalOnlyCategory = Boolean(
     categoryId === 'cat-11' ||
     categoryId === 'cat-12' ||
+    selectedCatObj?.accessLevel === 'INTERNAL' ||
     selectedCatObj?.title?.toLowerCase().includes('playbook')
   );
+  const isPlaybookCategory = isInternalOnlyCategory;
 
   const [accessLevel, setAccessLevel] = useState<'INTERNAL' | 'ALL'>(() => {
     if (editingArticle?.categoryId === 'cat-11' || editingArticle?.categoryId === 'cat-12') return 'INTERNAL';
+    const initCat = categories.find((c) => c.id === (editingArticle?.categoryId || categoryId));
+    if (initCat?.accessLevel === 'INTERNAL') return 'INTERNAL';
     return editingArticle?.accessLevel === 'ALL' || editingArticle?.accessLevel === 'EXTERNAL' ? 'ALL' : 'INTERNAL';
   });
 
-  // Se a categoria selecionada for Playbook, garante que accessLevel seja sempre INTERNAL
+  // Se a categoria selecionada for interna, garante que accessLevel seja sempre INTERNAL
   useEffect(() => {
-    if (isPlaybookCategory && accessLevel !== 'INTERNAL') {
+    if (isInternalOnlyCategory && accessLevel !== 'INTERNAL') {
       setAccessLevel('INTERNAL');
     }
-  }, [categoryId, isPlaybookCategory]);
+  }, [categoryId, isInternalOnlyCategory]);
 
   const [proposalNote, setProposalNote] = useState(editingArticle?.proposalNote || '');
   const [content, setContent] = useState(
@@ -97,19 +106,29 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     editingArticle?.attachments || []
   );
 
-  // Modal para Inserção de Imagens
+  // Modal Unificado Inteligente de Mídia (Imagem, Vídeo ou Hiperlink)
+  const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
+  const [mediaActiveTab, setMediaActiveTab] = useState<'link' | 'upload'>('link');
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaCaption, setMediaCaption] = useState('');
+  const [mediaInsertWidth, setMediaInsertWidth] = useState<number>(100);
+  const [mediaInsertAlign, setMediaInsertAlign] = useState<'center' | 'left' | 'right'>('center');
+  const [manualMediaType, setManualMediaType] = useState<'auto' | 'video' | 'image' | 'link'>('auto');
+
+  // Estados legados mantidos para compatibilidade
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageCaption, setImageCaption] = useState('');
   const [imageInsertWidth, setImageInsertWidth] = useState<number>(100);
   const [imageInsertAlign, setImageInsertAlign] = useState<'center' | 'left' | 'right'>('center');
-
-  // Modal para Inserção de Vídeos por Link
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoCaption, setVideoCaption] = useState('');
   const [videoInsertWidth, setVideoInsertWidth] = useState<number>(100);
   const [videoInsertAlign, setVideoInsertAlign] = useState<'center' | 'left' | 'right'>('center');
+
+  // Referência para salvar a posição exata do cursor antes de abrir o modal
+  const savedSelectionRangeRef = useRef<Range | null>(null);
 
   // Dropdown e Grid Interativo de Criação de Tabela por Mouse
   const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
@@ -120,6 +139,12 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [selectedImageWidth, setSelectedImageWidth] = useState<number>(100);
   const [selectedImageAlign, setSelectedImageAlign] = useState<'center' | 'left' | 'right'>('center');
+  const [overlayRect, setOverlayRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   // Vídeo Selecionado para Redimensionamento e Alinhamento
   const [selectedVideoElement, setSelectedVideoElement] = useState<HTMLElement | null>(null);
@@ -131,9 +156,55 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const visualEditorRef = useRef<HTMLDivElement>(null);
+  const editorWrapperRef = useRef<HTMLDivElement>(null);
+  const draggedImageElementRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageUploadRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // Atualiza coordenadas dos pontos de redimensionamento em tempo real (para Imagem OU Vídeo)
+  const updateOverlayRect = () => {
+    const target = selectedImage || selectedVideoElement;
+    if (!target || !editorWrapperRef.current) {
+      setOverlayRect(null);
+      return;
+    }
+    const wrapperRect = editorWrapperRef.current.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+
+    if (
+      targetRect.width === 0 ||
+      targetRect.height === 0 ||
+      targetRect.bottom < wrapperRect.top ||
+      targetRect.top > wrapperRect.bottom
+    ) {
+      setOverlayRect(null);
+      return;
+    }
+
+    setOverlayRect({
+      top: targetRect.top - wrapperRect.top,
+      left: targetRect.left - wrapperRect.left,
+      width: targetRect.width,
+      height: targetRect.height,
+    });
+  };
+
+  useEffect(() => {
+    updateOverlayRect();
+  }, [selectedImage, selectedVideoElement]);
+
+  useEffect(() => {
+    const onResizeOrScroll = () => {
+      if (selectedImage || selectedVideoElement) updateOverlayRect();
+    };
+    window.addEventListener('resize', onResizeOrScroll);
+    visualEditorRef.current?.addEventListener('scroll', onResizeOrScroll, { passive: true });
+    return () => {
+      window.removeEventListener('resize', onResizeOrScroll);
+      visualEditorRef.current?.removeEventListener('scroll', onResizeOrScroll);
+    };
+  }, [selectedImage, selectedVideoElement]);
 
   // Intercepta imagens com links expirados do Movidesk no editor visual e na prévia
   useArticleImageFallback(visualEditorRef, [content, editorMode]);
@@ -464,72 +535,227 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     insertHtmlAtCursor(html);
   };
 
-  // Inserir elemento de Imagem
+  // Helper para verificar se um texto colado é URL de Imagem
+  const isImageUrl = (url: string): boolean => {
+    const clean = url.trim();
+    if (!clean.startsWith('http://') && !clean.startsWith('https://') && !clean.startsWith('data:image/')) {
+      return false;
+    }
+    if (clean.startsWith('data:image/')) return true;
+    if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(clean)) return true;
+    if (/images\.unsplash\.com|res\.cloudinary\.com|i\.imgur\.com|media\.giphy\.com/i.test(clean)) return true;
+    return false;
+  };
+
+  // Helper para verificar se um texto colado é URL de Vídeo
+  const isVideoUrl = (url: string): boolean => {
+    const clean = url.trim();
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) return false;
+    if (/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/i.test(clean)) return true;
+    if (/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)/i.test(clean)) return true;
+    if (/\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(clean)) return true;
+    return false;
+  };
+
+  // Inserir elemento de Imagem com suporte nativo a fluxo lado a lado e arrastar para redimensionar/reordenar
   const insertImageElement = (
     src: string,
-    alt: string,
+    alt: string = 'Imagem',
     align: 'center' | 'left' | 'right' = 'center',
-    widthPercent: number = 100
+    widthPercent: number = 48
   ) => {
-    let style = `width: ${widthPercent}%; border-radius: 8px; border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0,0,0,0.25);`;
-    let wrapperStyle = `margin: 16px 0;`;
-
-    if (align === 'center') {
-      style += ` display: block; margin: 0 auto;`;
-      wrapperStyle += ` text-align: center;`;
-    } else if (align === 'left') {
-      style += ` float: left; margin: 6px 16px 16px 0; max-width: 50%;`;
-    } else if (align === 'right') {
-      style += ` float: right; margin: 6px 0 16px 16px; max-width: 50%;`;
-    }
+    let floatStyle = 'float: none; margin: 8px 6px;';
+    if (align === 'left') floatStyle = 'float: left; margin: 8px 16px 12px 0;';
+    else if (align === 'right') floatStyle = 'float: right; margin: 8px 0 12px 16px;';
 
     const figureHtml = `
-      <figure class="article-image-figure" style="${wrapperStyle}">
-        <img src="${src}" alt="${alt}" style="${style}" />
-        <figcaption style="font-size: 0.8rem; color: var(--text-subtle); margin-top: 6px; text-align: ${align};">${alt}</figcaption>
-      </figure><p><br></p>
+      <figure class="article-image-figure" data-align="${align}" style="display: inline-block; vertical-align: top; width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; text-align: center; ${floatStyle}">
+        <img src="${src}" alt="${alt}" draggable="true" style="width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0,0,0,0.25); display: block;" />
+        ${alt && alt !== 'Imagem' && alt !== 'Imagem colada' ? `<figcaption style="font-size: 0.8rem; color: var(--text-subtle); margin-top: 6px; text-align: center;">${alt}</figcaption>` : ''}
+      </figure>&nbsp;
     `;
     insertHtmlAtCursor(figureHtml);
   };
 
-  // Colar Imagem do Clipboard (Ctrl + V)
-  const handleVisualPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
+  // Helper de detecção inteligente do tipo de mídia a partir da URL
+  const detectMediaTypeFromUrl = (url: string): 'video' | 'image' | 'link' | 'none' => {
+    const clean = url.trim();
+    if (!clean) return 'none';
+    if (isVideoUrl(clean)) return 'video';
+    if (isImageUrl(clean)) return 'image';
+    if (/^(https?:\/\/|\/|#|mailto:)/i.test(clean)) return 'link';
+    return 'link';
+  };
 
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
-        e.preventDefault();
-        const file = items[i].getAsFile();
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (evt) => {
-            const base64 = evt.target?.result as string;
-            insertImageElement(base64, file.name || 'Imagem colada');
-          };
-          reader.readAsDataURL(file);
+  const detectedMediaType = useMemo<'video' | 'image' | 'link' | 'none'>(() => {
+    if (manualMediaType !== 'auto') return manualMediaType;
+    return detectMediaTypeFromUrl(mediaUrl);
+  }, [mediaUrl, manualMediaType]);
+
+  // Salvar cursor e abrir modal unificado de mídia
+  const openMediaModal = (defaultTab: 'link' | 'upload' = 'link', forcedType: 'auto' | 'video' | 'image' | 'link' = 'auto') => {
+    if (editorMode === 'VISUAL' && visualEditorRef.current) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && visualEditorRef.current.contains(sel.anchorNode)) {
+        savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+        const selectedText = sel.toString().trim();
+        if (selectedText) {
+          setMediaCaption(selectedText);
         }
+      }
+    }
+    setMediaActiveTab(defaultTab);
+    setManualMediaType(forcedType);
+    setIsMediaModalOpen(true);
+  };
+
+  // Restaurar seleção salva e inserir HTML
+  const restoreSelectionAndInsert = (html: string) => {
+    if (editorMode === 'VISUAL' && visualEditorRef.current) {
+      visualEditorRef.current.focus();
+      if (savedSelectionRangeRef.current) {
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(savedSelectionRangeRef.current);
+        }
+      }
+    }
+    insertHtmlAtCursor(html);
+    savedSelectionRangeRef.current = null;
+  };
+
+  // Inserir a mídia selecionada ou hiperlink
+  const handleConfirmMediaModal = () => {
+    if (mediaActiveTab === 'link') {
+      const trimmedUrl = mediaUrl.trim();
+      if (!trimmedUrl) return;
+
+      const type = detectedMediaType;
+      if (type === 'video') {
+        const html = getEmbedVideoHtml(trimmedUrl, mediaCaption, mediaInsertWidth, mediaInsertAlign);
+        restoreSelectionAndInsert(html);
+      } else if (type === 'image') {
+        insertImageElement(trimmedUrl, mediaCaption || 'Imagem', mediaInsertAlign, mediaInsertWidth);
+      } else {
+        // Hiperlink
+        const linkText = mediaCaption.trim() || trimmedUrl;
+        const linkHtml = `<a href="${trimmedUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary); text-decoration: underline; font-weight: 600;">${linkText}</a>&nbsp;`;
+        restoreSelectionAndInsert(linkHtml);
+      }
+    }
+
+    setMediaUrl('');
+    setMediaCaption('');
+    setManualMediaType('auto');
+    setIsMediaModalOpen(false);
+  };
+
+  // Colar do Clipboard (Ctrl + V): detecta imagem de arquivo, link de imagem ou link de vídeo
+  const handleVisualPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    // 1. Arquivos colados diretamente (ex: print screen com Ctrl+V)
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          e.preventDefault();
+          const file = items[i].getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              const base64 = evt.target?.result as string;
+              insertImageElement(base64, file.name || 'Imagem colada');
+            };
+            reader.readAsDataURL(file);
+          }
+          return;
+        }
+      }
+    }
+
+    // 2. Links colados: transformar automaticamente em vídeo ou imagem
+    const pastedText = e.clipboardData?.getData('text/plain')?.trim();
+    if (pastedText) {
+      if (isVideoUrl(pastedText)) {
+        e.preventDefault();
+        const html = getEmbedVideoHtml(pastedText);
+        insertHtmlAtCursor(html);
+        return;
+      }
+      if (isImageUrl(pastedText)) {
+        e.preventDefault();
+        insertImageElement(pastedText, 'Imagem');
         return;
       }
     }
+
     setTimeout(syncFromVisualEditor, 0);
   };
 
-  // Arrastar e Soltar Imagem (Drag & Drop)
+  // Início de Arraste de Imagem (Reorganização de Posição)
+  const handleVisualDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const img = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.querySelector('img');
+    if (img) {
+      const figureOrImg = (img.closest('figure.article-image-figure') as HTMLElement) || img;
+      draggedImageElementRef.current = figureOrImg;
+      e.dataTransfer.setData('text/html', figureOrImg.outerHTML);
+      e.dataTransfer.setData('application/x-kb-image-drag', 'true');
+      e.dataTransfer.effectAllowed = 'move';
+      setSelectedImage(null);
+      setOverlayRect(null);
+    }
+  };
+
+  // Soltar Imagem (Drop): suporta mover imagem interna ou importar arquivo externo
   const handleVisualDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          const base64 = evt.target?.result as string;
-          insertImageElement(base64, file.name);
-        };
-        reader.readAsDataURL(file);
+    // 1. Arquivo externo arrastado do computador
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            const base64 = evt.target?.result as string;
+            insertImageElement(base64, file.name);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+      return;
+    }
+
+    // 2. Mover imagem existente para nova posição no texto
+    if (draggedImageElementRef.current) {
+      const draggedEl = draggedImageElementRef.current;
+      draggedImageElementRef.current = null;
+
+      let range: Range | null = null;
+      if (document.caretRangeFromPoint) {
+        range = document.caretRangeFromPoint(e.clientX, e.clientY);
+      } else if ((document as any).caretPositionFromPoint) {
+        const pos = (document as any).caretPositionFromPoint(e.clientX, e.clientY);
+        if (pos) {
+          range = document.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+        }
+      }
+
+      if (range && visualEditorRef.current?.contains(range.commonAncestorContainer)) {
+        draggedEl.remove();
+        range.insertNode(draggedEl);
+        syncFromVisualEditor();
+
+        const img = draggedEl.tagName === 'IMG' ? (draggedEl as HTMLImageElement) : draggedEl.querySelector('img');
+        if (img) {
+          setTimeout(() => {
+            selectImageForResize(img);
+          }, 60);
+        }
       }
     }
   };
@@ -538,30 +764,76 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     e.preventDefault();
   };
 
-  // Clique no editor visual (detecta clique em imagem ou vídeo para abrir opções de redimensionamento e alinhamento)
+  const handleVisualScroll = () => {
+    if (selectedImage) {
+      updateOverlayRect();
+    }
+  };
+
+  // Selecionar Imagem e ativar pontos interativos de redimensionamento
+  const selectImageForResize = (img: HTMLImageElement) => {
+    visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
+      el.classList.remove('img-selected', 'video-selected');
+    });
+    img.classList.add('img-selected');
+    setSelectedImage(img);
+    setSelectedVideoElement(null);
+
+    const parentFigure = img.closest('figure.article-image-figure') as HTMLElement | null;
+    const wStr = parentFigure?.style.width || img.style.width;
+    if (wStr && wStr.endsWith('%')) {
+      setSelectedImageWidth(parseInt(wStr, 10));
+    } else if (img.offsetWidth && visualEditorRef.current) {
+      const editorWidth = visualEditorRef.current.clientWidth - 48;
+      const pct = Math.round((img.offsetWidth / editorWidth) * 100);
+      setSelectedImageWidth(Math.min(100, Math.max(10, pct)));
+    } else {
+      setSelectedImageWidth(48);
+    }
+
+    const alignAttr = parentFigure?.getAttribute('data-align') || img.style.float;
+    if (alignAttr === 'left' || img.style.float === 'left') setSelectedImageAlign('left');
+    else if (alignAttr === 'right' || img.style.float === 'right') setSelectedImageAlign('right');
+    else setSelectedImageAlign('center');
+
+    setTimeout(updateOverlayRect, 10);
+  };
+
+  // Selecionar Vídeo e ativar pontos interativos de redimensionamento
+  const selectVideoForResize = (videoEl: HTMLElement) => {
+    visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
+      el.classList.remove('img-selected', 'video-selected');
+    });
+    videoEl.classList.add('video-selected');
+    setSelectedVideoElement(videoEl);
+    setSelectedImage(null);
+
+    const wStr = videoEl.style.width;
+    if (wStr && wStr.endsWith('%')) {
+      setSelectedVideoWidth(parseInt(wStr, 10));
+    } else if (videoEl.offsetWidth && visualEditorRef.current) {
+      const editorWidth = visualEditorRef.current.clientWidth - 48;
+      const pct = Math.round((videoEl.offsetWidth / editorWidth) * 100);
+      setSelectedVideoWidth(Math.min(100, Math.max(10, pct)));
+    } else {
+      setSelectedVideoWidth(100);
+    }
+
+    const alignAttr = videoEl.getAttribute('data-align');
+    if (alignAttr === 'left' || videoEl.style.float === 'left') setSelectedVideoAlign('left');
+    else if (alignAttr === 'right' || videoEl.style.float === 'right') setSelectedVideoAlign('right');
+    else setSelectedVideoAlign('center');
+
+    setTimeout(updateOverlayRect, 10);
+  };
+
+  // Clique no editor visual (detecta clique em imagem ou vídeo)
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
 
     // 1. Detectar clique em Imagem
     if (target.tagName === 'IMG') {
-      const img = target as HTMLImageElement;
-      visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
-        el.classList.remove('img-selected', 'video-selected');
-      });
-      img.classList.add('img-selected');
-      setSelectedImage(img);
-      setSelectedVideoElement(null);
-
-      const wStr = img.style.width;
-      if (wStr && wStr.endsWith('%')) {
-        setSelectedImageWidth(parseInt(wStr, 10));
-      } else {
-        setSelectedImageWidth(100);
-      }
-
-      if (img.style.float === 'left') setSelectedImageAlign('left');
-      else if (img.style.float === 'right') setSelectedImageAlign('right');
-      else setSelectedImageAlign('center');
+      selectImageForResize(target as HTMLImageElement);
       return;
     }
 
@@ -572,63 +844,127 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       (target.tagName === 'IFRAME' ? target.closest('.article-video-figure') || target : null)) as HTMLElement | null;
 
     if (videoFigure) {
-      visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
-        el.classList.remove('img-selected', 'video-selected');
-      });
-      videoFigure.classList.add('video-selected');
-      setSelectedVideoElement(videoFigure);
-      setSelectedImage(null);
-
-      const wStr = videoFigure.style.width;
-      if (wStr && wStr.endsWith('%')) {
-        setSelectedVideoWidth(parseInt(wStr, 10));
-      } else {
-        setSelectedVideoWidth(100);
-      }
-
-      const alignAttr = videoFigure.getAttribute('data-align');
-      if (alignAttr === 'left' || videoFigure.style.float === 'left') setSelectedVideoAlign('left');
-      else if (alignAttr === 'right' || videoFigure.style.float === 'right') setSelectedVideoAlign('right');
-      else setSelectedVideoAlign('center');
+      selectVideoForResize(videoFigure);
       return;
     }
 
-    // 3. Clique fora: desmarcar se não foi em nenhuma das barras flutuantes
-    if (!target.closest('.image-floating-toolbar') && !target.closest('.video-floating-toolbar')) {
+    // 3. Clique fora: desmarcar se não foi em nenhuma das barras flutuantes ou pontos
+    if (
+      !target.closest('.image-floating-toolbar') &&
+      !target.closest('.video-floating-toolbar') &&
+      !target.closest('.image-resize-overlay')
+    ) {
       visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
         el.classList.remove('img-selected', 'video-selected');
       });
       setSelectedImage(null);
       setSelectedVideoElement(null);
+      setOverlayRect(null);
     }
+  };
+
+  // Arrastar pontos nos cantos/bordas para redimensionar a imagem ou vídeo
+  const handleStartResize = (e: React.MouseEvent, handle: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const targetEl = selectedImage || selectedVideoElement;
+    if (!targetEl || !visualEditorRef.current || !editorWrapperRef.current) return;
+
+    const startX = e.clientX;
+    const startWidth = targetEl.offsetWidth;
+    const editorWidth = visualEditorRef.current.clientWidth - 48;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+      const deltaX = moveEvent.clientX - startX;
+      let newWidth = startWidth;
+
+      if (handle === 'bottom-right' || handle === 'right' || handle === 'top-right') {
+        newWidth = startWidth + deltaX;
+      } else if (handle === 'bottom-left' || handle === 'left' || handle === 'top-left') {
+        newWidth = startWidth - deltaX;
+      }
+
+      const clampedWidth = Math.max(80, Math.min(newWidth, editorWidth));
+      const widthPercent = Math.max(10, Math.min(100, Math.round((clampedWidth / editorWidth) * 100)));
+
+      if (selectedImage) {
+        const parentFigure = selectedImage.closest('figure.article-image-figure') as HTMLElement | null;
+        if (parentFigure) {
+          parentFigure.style.width = `${widthPercent}%`;
+          selectedImage.style.width = '100%';
+        } else {
+          selectedImage.style.width = `${widthPercent}%`;
+        }
+        selectedImage.style.height = 'auto';
+        setSelectedImageWidth(widthPercent);
+      } else if (selectedVideoElement) {
+        selectedVideoElement.style.width = `${widthPercent}%`;
+        setSelectedVideoWidth(widthPercent);
+      }
+
+      updateOverlayRect();
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      syncFromVisualEditor();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   };
 
   // Alinhar Imagem Selecionada (Centro, Esquerda, Direita)
   const alignSelectedImage = (align: 'center' | 'left' | 'right') => {
     if (!selectedImage) return;
     setSelectedImageAlign(align);
+    const parentFigure = selectedImage.closest('figure.article-image-figure') as HTMLElement | null;
+    const target = parentFigure || selectedImage;
+
+    target.setAttribute('data-align', align);
+
     if (align === 'center') {
-      selectedImage.style.display = 'block';
-      selectedImage.style.margin = '16px auto';
-      selectedImage.style.float = 'none';
+      target.style.display = 'inline-block';
+      target.style.verticalAlign = 'top';
+      target.style.float = 'none';
+      target.style.margin = '8px auto';
+      target.style.textAlign = 'center';
+      if (target.parentElement && target.parentElement !== visualEditorRef.current) {
+        target.parentElement.style.textAlign = 'center';
+      }
     } else if (align === 'left') {
-      selectedImage.style.display = 'inline-block';
-      selectedImage.style.float = 'left';
-      selectedImage.style.margin = '8px 16px 16px 0';
+      target.style.display = 'inline-block';
+      target.style.verticalAlign = 'top';
+      target.style.float = 'left';
+      target.style.margin = '8px 16px 12px 0';
+      target.style.textAlign = 'left';
     } else if (align === 'right') {
-      selectedImage.style.display = 'inline-block';
-      selectedImage.style.float = 'right';
-      selectedImage.style.margin = '8px 0 16px 16px';
+      target.style.display = 'inline-block';
+      target.style.verticalAlign = 'top';
+      target.style.float = 'right';
+      target.style.margin = '8px 0 12px 16px';
+      target.style.textAlign = 'right';
     }
     syncFromVisualEditor();
+    updateOverlayRect();
   };
 
   // Redimensionar Imagem Selecionada
   const applyImageWidth = (pct: number) => {
     if (!selectedImage) return;
     setSelectedImageWidth(pct);
-    selectedImage.style.width = `${pct}%`;
+    const parentFigure = selectedImage.closest('figure.article-image-figure') as HTMLElement | null;
+    if (parentFigure) {
+      parentFigure.style.width = `${pct}%`;
+      selectedImage.style.width = '100%';
+    } else {
+      selectedImage.style.width = `${pct}%`;
+    }
+    selectedImage.style.height = 'auto';
     syncFromVisualEditor();
+    setTimeout(updateOverlayRect, 10);
   };
 
   // Remover Imagem Selecionada
@@ -641,7 +977,54 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       selectedImage.remove();
     }
     setSelectedImage(null);
+    setOverlayRect(null);
     syncFromVisualEditor();
+  };
+
+  // Ação unificada de alinhamento para a barra de ferramentas (Texto, Imagem ou Vídeo)
+  const handleAlignClick = (align: 'left' | 'center' | 'right') => {
+    if (selectedImage) {
+      alignSelectedImage(align);
+      return;
+    }
+    if (selectedVideoElement) {
+      alignSelectedVideo(align);
+      return;
+    }
+
+    // Verifica se o cursor está dentro de uma imagem ou vídeo
+    const sel = window.getSelection();
+    if (sel && sel.anchorNode) {
+      let node: Node | null = sel.anchorNode;
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+      const el = node as HTMLElement | null;
+      const foundImg = el?.closest('figure.article-image-figure, img') as HTMLElement | null;
+      if (foundImg) {
+        const img = foundImg.tagName === 'IMG' ? (foundImg as HTMLImageElement) : foundImg.querySelector('img');
+        if (img) {
+          selectImageForResize(img);
+          alignSelectedImage(align);
+          return;
+        }
+      }
+      const foundVideo = el?.closest('.article-video-figure, .video-container') as HTMLElement | null;
+      if (foundVideo) {
+        setSelectedVideoElement(foundVideo);
+        alignSelectedVideo(align);
+        return;
+      }
+    }
+
+    // Alinhamento padrão de texto
+    if (editorMode === 'VISUAL' && visualEditorRef.current) {
+      visualEditorRef.current.focus();
+      if (align === 'center') document.execCommand('justifyCenter', false);
+      else if (align === 'left') document.execCommand('justifyLeft', false);
+      else if (align === 'right') document.execCommand('justifyRight', false);
+      syncFromVisualEditor();
+    } else {
+      wrapSelection(`<div style="text-align: ${align};">`, '</div>', 'texto alinhado');
+    }
   };
 
   // Alinhar Vídeo Selecionado (Centro, Esquerda, Direita)
@@ -667,6 +1050,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       selectedVideoElement.style.textAlign = 'right';
     }
     syncFromVisualEditor();
+    updateOverlayRect();
   };
 
   // Redimensionar Vídeo Selecionado
@@ -675,6 +1059,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     setSelectedVideoWidth(pct);
     selectedVideoElement.style.width = `${pct}%`;
     syncFromVisualEditor();
+    setTimeout(updateOverlayRect, 10);
   };
 
   // Remover Vídeo Selecionado
@@ -682,6 +1067,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     if (!selectedVideoElement) return;
     selectedVideoElement.remove();
     setSelectedVideoElement(null);
+    setOverlayRect(null);
     syncFromVisualEditor();
   };
 
@@ -692,10 +1078,12 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      insertImageElement(base64, file.name, imageInsertAlign, imageInsertWidth);
+      insertImageElement(base64, file.name, mediaInsertAlign || 'center', mediaInsertWidth || 100);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+    setIsMediaModalOpen(false);
+    setIsImageModalOpen(false);
   };
 
   const handleConfirmImageUrl = () => {
@@ -797,6 +1185,14 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
   return (
     <div style={{ padding: '24px 32px', height: '100%', display: 'flex', flexDirection: 'column' }} className="animate-fade-in">
+      {/* Input de arquivo de imagem montado permanentemente no DOM */}
+      <input
+        type="file"
+        accept="image/*"
+        ref={imageUploadRef}
+        onChange={handleImageFileChange}
+        style={{ display: 'none' }}
+      />
       {/* Top Bar Navigation */}
       <div
         style={{
@@ -1636,6 +2032,48 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
               <div style={{ width: '1px', height: '18px', background: 'var(--border-subtle)', margin: '0 2px' }} />
 
+              {/* Alinhamento: Esquerda, Centro, Direita (Aplica em Texto, Imagem ou Vídeo) */}
+              <div style={{ display: 'flex', gap: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleAlignClick('left')}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    padding: '4px 8px',
+                    color: selectedImageAlign === 'left' || selectedVideoAlign === 'left' ? 'var(--color-primary)' : undefined,
+                  }}
+                  title="Alinhar à Esquerda (Texto, Imagem ou Vídeo)"
+                >
+                  <AlignLeft size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAlignClick('center')}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    padding: '4px 8px',
+                    color: selectedImageAlign === 'center' || selectedVideoAlign === 'center' ? 'var(--color-primary)' : undefined,
+                  }}
+                  title="Centralizar (Texto, Imagem ou Vídeo)"
+                >
+                  <AlignCenter size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAlignClick('right')}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    padding: '4px 8px',
+                    color: selectedImageAlign === 'right' || selectedVideoAlign === 'right' ? 'var(--color-primary)' : undefined,
+                  }}
+                  title="Alinhar à Direita (Texto, Imagem ou Vídeo)"
+                >
+                  <AlignRight size={13} />
+                </button>
+              </div>
+
+              <div style={{ width: '1px', height: '18px', background: 'var(--border-subtle)', margin: '0 2px' }} />
+
               {/* Listas e Estruturas */}
               <button
                 type="button"
@@ -1808,46 +2246,44 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
               <div style={{ width: '1px', height: '18px', background: 'var(--border-subtle)', margin: '0 2px' }} />
 
-              {/* Inserção de Imagem Individual */}
+              {/* Botão Unificado: Inserir Imagem ou Vídeo */}
               <button
                 type="button"
-                onClick={() => setIsImageModalOpen(true)}
+                onClick={() => openMediaModal('link')}
                 className="btn btn-secondary btn-sm"
-                style={{ padding: '4px 9px', display: 'flex', alignItems: 'center', gap: '5px' }}
-                title="Inserir Imagem por URL ou Upload de Arquivo"
+                style={{
+                  padding: '4px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(92, 183, 128, 0.14)',
+                  borderColor: 'var(--color-primary)',
+                  color: 'var(--color-primary)',
+                  fontWeight: 700,
+                }}
+                title="Adicionar Imagem (upload ou link), Vídeo (YouTube, Vimeo, MP4) ou Hiperlink"
               >
-                <ImageIcon size={13} color="var(--color-primary)" />
-                <span>Inserir Imagem</span>
+                <ImagePlus size={14} />
+                <span>Adicionar Imagem ou Vídeo</span>
               </button>
 
-              {/* Inserção de Vídeo por Link */}
+              {/* Atalho para Inserir Hiperlink */}
               <button
                 type="button"
-                onClick={() => setIsVideoModalOpen(true)}
+                onClick={() => openMediaModal('link', 'link')}
                 className="btn btn-secondary btn-sm"
-                style={{ padding: '4px 9px', display: 'flex', alignItems: 'center', gap: '5px', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#ef4444' }}
-                title="Inserir Vídeo por Link (YouTube, Vimeo ou MP4)"
+                style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                title="Inserir Hiperlink / Link Web no texto"
               >
-                <Video size={13} />
-                <span>Inserir Vídeo</span>
-              </button>
-
-              {/* Duas Imagens Lado a Lado */}
-              <button
-                type="button"
-                onClick={insertTwoImagesSideBySide}
-                className="btn btn-secondary btn-sm"
-                style={{ padding: '4px 9px', display: 'flex', alignItems: 'center', gap: '5px', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
-                title="Inserir duas imagens lado a lado em 2 colunas"
-              >
-                <Columns size={13} />
-                <span>2 Imagens Lado a Lado</span>
+                <LinkIcon size={13} />
+                <span>Link</span>
               </button>
             </div>
           </div>
 
           {/* ÁREA DE TEXTO VISUAL WYSIWYG / CÓDIGO + PRÉVIA APENAS QUANDO CÓDIGO HTML */}
           <div
+            ref={editorWrapperRef}
             style={{
               display: 'flex',
               flex: 1,
@@ -1857,32 +2293,339 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
               borderBottomRightRadius: 'var(--radius-md)',
               overflow: 'hidden',
               background: 'var(--bg-card)',
+              position: 'relative',
             }}
           >
             {/* Modo 1: Editor Visual WYSIWYG (Padrão: 100% largura sem prévia lateral) */}
             {editorMode === 'VISUAL' ? (
-              <div
-                ref={visualEditorRef}
-                contentEditable
-                suppressContentEditableWarning
-                onInput={syncFromVisualEditor}
-                onPaste={handleVisualPaste}
-                onDrop={handleVisualDrop}
-                onDragOver={handleDragOver}
-                onClick={handleVisualClick}
-                className="article-visual-editor"
-                style={{
-                  flex: '1 1 100%',
-                  padding: '20px 24px',
-                  background: 'var(--bg-card)',
-                  border: 'none',
-                  fontSize: '0.92rem',
-                  lineHeight: 1.7,
-                  color: 'var(--text-main)',
-                  outline: 'none',
-                  overflowY: 'auto',
-                }}
-              />
+              <>
+                <div
+                  ref={visualEditorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={syncFromVisualEditor}
+                  onPaste={handleVisualPaste}
+                  onDrop={handleVisualDrop}
+                  onDragOver={handleDragOver}
+                  onDragStart={handleVisualDragStart}
+                  onScroll={handleVisualScroll}
+                  onClick={handleVisualClick}
+                  className="article-visual-editor"
+                  style={{
+                    flex: '1 1 100%',
+                    padding: '20px 24px',
+                    background: 'var(--bg-card)',
+                    border: 'none',
+                    fontSize: '0.92rem',
+                    lineHeight: 1.7,
+                    color: 'var(--text-main)',
+                    outline: 'none',
+                    overflowY: 'auto',
+                  }}
+                />
+
+                {/* OVERLAY INTERATIVO DE REDIMENSIONAMENTO COM PONTOS DE ARRASTE (PARA IMAGEM OU VÍDEO) */}
+                {(selectedImage || selectedVideoElement) && overlayRect && (
+                  (() => {
+                    const isVideo = Boolean(selectedVideoElement);
+                    const accentColor = isVideo ? '#ef4444' : 'var(--color-primary)';
+                    const currentWidth = isVideo ? selectedVideoWidth : selectedImageWidth;
+                    const currentAlign = isVideo ? selectedVideoAlign : selectedImageAlign;
+
+                    return (
+                      <div
+                        className="image-resize-overlay animate-fade-in"
+                        style={{
+                          position: 'absolute',
+                          top: `${overlayRect.top}px`,
+                          left: `${overlayRect.left}px`,
+                          width: `${overlayRect.width}px`,
+                          height: `${overlayRect.height}px`,
+                          border: `2px solid ${accentColor}`,
+                          borderRadius: '8px',
+                          pointerEvents: 'none',
+                          zIndex: 35,
+                          boxShadow: `0 0 0 1px rgba(0, 0, 0, 0.2), 0 4px 14px ${isVideo ? 'rgba(239, 68, 68, 0.25)' : 'rgba(92, 183, 128, 0.25)'}`,
+                        }}
+                      >
+                        {/* Barra Flutuante de Controles e Alinhamento fixada acima da mídia */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '-46px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: 'var(--bg-card, #0f172a)',
+                            border: `1px solid ${accentColor}`,
+                            borderRadius: '8px',
+                            padding: '4px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                            pointerEvents: 'auto',
+                            zIndex: 40,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: accentColor,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              paddingRight: '6px',
+                              borderRight: '1px solid var(--border-subtle)',
+                            }}
+                          >
+                            {isVideo ? <Film size={12} /> : <ImageIcon size={12} />}
+                            {isVideo ? 'Vídeo' : 'Imagem'}
+                          </span>
+
+                          {/* Alinhamento */}
+                          <div style={{ display: 'flex', gap: '2px' }}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                isVideo ? alignSelectedVideo('left') : alignSelectedImage('left');
+                              }}
+                              className="btn btn-secondary btn-sm"
+                              style={{
+                                padding: '3px 6px',
+                                background: currentAlign === 'left' ? accentColor : 'transparent',
+                                color: currentAlign === 'left' ? '#ffffff' : 'var(--text-main)',
+                              }}
+                              title="Alinhar à Esquerda"
+                            >
+                              <AlignLeft size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                isVideo ? alignSelectedVideo('center') : alignSelectedImage('center');
+                              }}
+                              className="btn btn-secondary btn-sm"
+                              style={{
+                                padding: '3px 6px',
+                                background: currentAlign === 'center' ? accentColor : 'transparent',
+                                color: currentAlign === 'center' ? '#ffffff' : 'var(--text-main)',
+                              }}
+                              title="Centralizar"
+                            >
+                              <AlignCenter size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                isVideo ? alignSelectedVideo('right') : alignSelectedImage('right');
+                              }}
+                              className="btn btn-secondary btn-sm"
+                              style={{
+                                padding: '3px 6px',
+                                background: currentAlign === 'right' ? accentColor : 'transparent',
+                                color: currentAlign === 'right' ? '#ffffff' : 'var(--text-main)',
+                              }}
+                              title="Alinhar à Direita"
+                            >
+                              <AlignRight size={12} />
+                            </button>
+                          </div>
+
+                          <div style={{ width: '1px', height: '14px', background: 'var(--border-subtle)' }} />
+
+                          {/* Larguras pré-definidas */}
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            {[35, 50, 75, 100].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  isVideo ? applyVideoWidth(pct) : applyImageWidth(pct);
+                                }}
+                                style={{
+                                  padding: '2px 6px',
+                                  fontSize: '0.69rem',
+                                  fontWeight: 700,
+                                  borderRadius: '4px',
+                                  border: `1px solid ${currentWidth === pct ? accentColor : 'var(--border-subtle)'}`,
+                                  background: currentWidth === pct ? accentColor : 'transparent',
+                                  color: currentWidth === pct ? '#ffffff' : 'var(--text-main)',
+                                  cursor: 'pointer',
+                                }}
+                                title={`Definir tamanho para ${pct}%`}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
+
+                          <div style={{ width: '1px', height: '14px', background: 'var(--border-subtle)' }} />
+
+                          {/* Excluir */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              isVideo ? removeSelectedVideo() : removeSelectedImage();
+                            }}
+                            style={{
+                              padding: '3px 6px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            title="Remover do Artigo"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+
+                        {/* Pontos nos 4 Cantos */}
+                        <div
+                          onMouseDown={(e) => handleStartResize(e, 'top-left')}
+                          style={{
+                            position: 'absolute',
+                            top: '-7px',
+                            left: '-7px',
+                            width: '14px',
+                            height: '14px',
+                            background: '#ffffff',
+                            border: `2px solid ${accentColor}`,
+                            borderRadius: '50%',
+                            cursor: 'nwse-resize',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                            zIndex: 36,
+                          }}
+                          title="Arrastar ponto para redimensionar"
+                        />
+                        <div
+                          onMouseDown={(e) => handleStartResize(e, 'top-right')}
+                          style={{
+                            position: 'absolute',
+                            top: '-7px',
+                            right: '-7px',
+                            width: '14px',
+                            height: '14px',
+                            background: '#ffffff',
+                            border: `2px solid ${accentColor}`,
+                            borderRadius: '50%',
+                            cursor: 'nesw-resize',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                            zIndex: 36,
+                          }}
+                          title="Arrastar ponto para redimensionar"
+                        />
+                        <div
+                          onMouseDown={(e) => handleStartResize(e, 'bottom-left')}
+                          style={{
+                            position: 'absolute',
+                            bottom: '-7px',
+                            left: '-7px',
+                            width: '14px',
+                            height: '14px',
+                            background: '#ffffff',
+                            border: `2px solid ${accentColor}`,
+                            borderRadius: '50%',
+                            cursor: 'nesw-resize',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                            zIndex: 36,
+                          }}
+                          title="Arrastar ponto para redimensionar"
+                        />
+                        <div
+                          onMouseDown={(e) => handleStartResize(e, 'bottom-right')}
+                          style={{
+                            position: 'absolute',
+                            bottom: '-7px',
+                            right: '-7px',
+                            width: '14px',
+                            height: '14px',
+                            background: '#ffffff',
+                            border: `2px solid ${accentColor}`,
+                            borderRadius: '50%',
+                            cursor: 'nwse-resize',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                            zIndex: 36,
+                          }}
+                          title="Arrastar ponto para redimensionar"
+                        />
+
+                        {/* Pontos nas Bordas Laterais */}
+                        <div
+                          onMouseDown={(e) => handleStartResize(e, 'left')}
+                          style={{
+                            position: 'absolute',
+                            top: 'calc(50% - 7px)',
+                            left: '-7px',
+                            width: '14px',
+                            height: '14px',
+                            background: '#ffffff',
+                            border: `2px solid ${accentColor}`,
+                            borderRadius: '50%',
+                            cursor: 'ew-resize',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                            zIndex: 36,
+                          }}
+                          title="Ajustar largura"
+                        />
+                        <div
+                          onMouseDown={(e) => handleStartResize(e, 'right')}
+                          style={{
+                            position: 'absolute',
+                            top: 'calc(50% - 7px)',
+                            right: '-7px',
+                            width: '14px',
+                            height: '14px',
+                            background: '#ffffff',
+                            border: `2px solid ${accentColor}`,
+                            borderRadius: '50%',
+                            cursor: 'ew-resize',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                            zIndex: 36,
+                          }}
+                          title="Ajustar largura"
+                        />
+
+                        {/* Pill com Porcentagem e Tamanho em Pixels */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            bottom: '-28px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: accentColor,
+                            color: '#ffffff',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                            pointerEvents: 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {currentWidth}% ({Math.round(overlayRect.width)}px)
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
+              </>
             ) : (
               /* Modo 2: Editor Textarea de Código HTML (com prévia ao lado) */
               <>
@@ -2266,386 +3009,500 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
         )}
       </div>
 
-      {/* MODAL DE INSERÇÃO DE IMAGEM */}
-      {isImageModalOpen && (
+      {/* MODAL INTELIGENTE UNIFICADO DE MÍDIA (IMAGEM, VÍDEO OU HIPERLINK) */}
+      {isMediaModalOpen && createPortal(
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
+            background: 'rgba(0, 0, 0, 0.78)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 100,
+            zIndex: 9999,
             padding: '20px',
+            overflowY: 'auto',
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setIsImageModalOpen(false);
+            if (e.target === e.currentTarget) setIsMediaModalOpen(false);
           }}
         >
           <div
             style={{
               width: '100%',
-              maxWidth: '460px',
+              maxWidth: '520px',
+              maxHeight: 'calc(100vh - 40px)',
+              overflowY: 'auto',
               background: 'var(--bg-card, #0f172a)',
               borderRadius: '16px',
               border: '1px solid var(--border-subtle)',
               padding: '24px',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
             }}
           >
+            {/* Cabeçalho */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ImageIcon size={18} color="var(--color-primary)" />
-                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>
-                  Inserir Imagem no Artigo
+                <ImagePlus size={19} color="var(--color-primary)" />
+                <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--text-main)', fontWeight: 700 }}>
+                  Adicionar Mídia ou Link
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setIsImageModalOpen(false)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+                onClick={() => setIsMediaModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '4px' }}
+                title="Fechar"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Opção 1: Upload do Computador */}
-            <div style={{ marginBottom: '18px' }}>
-              <span style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                Opção 1: Enviar Arquivo do Computador
-              </span>
-              <input
-                type="file"
-                accept="image/*"
-                ref={imageUploadRef}
-                onChange={(e) => {
-                  handleImageFileChange(e);
-                  setIsImageModalOpen(false);
+            {/* Abas: Inserir por Link (Inteligente) vs Upload do Computador */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setMediaActiveTab('link')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: mediaActiveTab === 'link' ? 'var(--color-primary)' : 'var(--bg-surface)',
+                  color: mediaActiveTab === 'link' ? '#ffffff' : 'var(--text-muted)',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
                 }}
-                style={{ display: 'none' }}
-              />
+              >
+                <LinkIcon size={14} />
+                <span>Inserir por Link (URL)</span>
+              </button>
               <button
                 type="button"
-                className="btn btn-secondary"
-                onClick={() => imageUploadRef.current?.click()}
-                style={{ width: '100%', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                onClick={() => setMediaActiveTab('upload')}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: mediaActiveTab === 'upload' ? 'var(--color-primary)' : 'var(--bg-surface)',
+                  color: mediaActiveTab === 'upload' ? '#ffffff' : 'var(--text-muted)',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                }}
               >
-                <Upload size={15} />
-                <span>Escolher Imagem (PNG, JPG, SVG)...</span>
+                <Upload size={14} />
+                <span>Upload do Computador</span>
               </button>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '14px 0' }}>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>OU</span>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-            </div>
+            {/* Conteúdo Aba 1: Link Inteligente (Reconhece Imagem, Vídeo ou Hiperlink) */}
+            {mediaActiveTab === 'link' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      URL ou Link da Mídia:
+                    </label>
 
-            {/* Opção 2: URL da Imagem */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Opção 2: Link / URL da Imagem:
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://exemplo.com/imagem.png"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--text-main)',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                  }}
-                />
-              </div>
+                    {/* Badge de Reconhecimento Automático */}
+                    {mediaUrl.trim() && (
+                      <span
+                        style={{
+                          fontSize: '0.71rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background:
+                            detectedMediaType === 'video'
+                              ? 'rgba(239, 68, 68, 0.15)'
+                              : detectedMediaType === 'image'
+                              ? 'rgba(92, 183, 128, 0.15)'
+                              : 'rgba(56, 189, 248, 0.15)',
+                          color:
+                            detectedMediaType === 'video'
+                              ? '#ef4444'
+                              : detectedMediaType === 'image'
+                              ? 'var(--color-primary)'
+                              : '#38bdf8',
+                          border: `1px solid ${
+                            detectedMediaType === 'video'
+                              ? 'rgba(239, 68, 68, 0.3)'
+                              : detectedMediaType === 'image'
+                              ? 'rgba(92, 183, 128, 0.3)'
+                              : 'rgba(56, 189, 248, 0.3)'
+                          }`,
+                        }}
+                      >
+                        {detectedMediaType === 'video' && <><Film size={11} /> Vídeo Detectado</>}
+                        {detectedMediaType === 'image' && <><ImageIcon size={11} /> Imagem Detectada</>}
+                        {detectedMediaType === 'link' && <><ExternalLink size={11} /> Hiperlink Detectado</>}
+                      </span>
+                    )}
+                  </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Legenda da Imagem (Opcional):
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Tela de configuração de extrato"
-                  value={imageCaption}
-                  onChange={(e) => setImageCaption(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--text-main)',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                  }}
-                />
-              </div>
+                  <input
+                    type="url"
+                    autoFocus
+                    placeholder="Cole aqui o link do YouTube, Vimeo, imagem (.png, .jpg) ou link web..."
+                    value={mediaUrl}
+                    onChange={(e) => setMediaUrl(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--text-main)',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+                    Reconhece automaticamente: Vídeo (YouTube, Vimeo, MP4), Imagem (PNG, JPG, SVG, WebP) ou Hiperlink.
+                  </span>
+                </div>
 
-              {/* Ajuste de Tamanho e Alinhamento da Imagem */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', background: 'var(--bg-surface)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                {/* Seletor Manual de Tipo (Permite sobrescrever a detecção) */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                    Tamanho da Imagem:
+                    Tipo de Inserção:
                   </label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {[25, 50, 75, 100].map((pct) => (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                    {[
+                      { id: 'auto', label: '⚡ Auto', title: 'Detectar automaticamente pelo link' },
+                      { id: 'image', label: '🖼️ Imagem', title: 'Inserir como imagem com alças de redimensionamento' },
+                      { id: 'video', label: '🎬 Vídeo', title: 'Inserir como player de vídeo com alças' },
+                      { id: 'link', label: '🔗 Link', title: 'Inserir como hiperlink clicável' },
+                    ].map((opt) => (
                       <button
-                        key={pct}
+                        key={opt.id}
                         type="button"
-                        onClick={() => setImageInsertWidth(pct)}
+                        onClick={() => setManualMediaType(opt.id as any)}
                         style={{
-                          flex: 1,
-                          padding: '4px 0',
-                          borderRadius: '4px',
-                          border: `1px solid ${imageInsertWidth === pct ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-                          background: imageInsertWidth === pct ? 'var(--color-primary)' : 'transparent',
-                          color: imageInsertWidth === pct ? '#fff' : 'var(--text-main)',
+                          padding: '6px 4px',
+                          borderRadius: '6px',
+                          border: `1px solid ${manualMediaType === opt.id ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                          background: manualMediaType === opt.id ? 'rgba(92, 183, 128, 0.16)' : 'var(--bg-surface)',
+                          color: manualMediaType === opt.id ? 'var(--color-primary)' : 'var(--text-muted)',
                           fontSize: '0.74rem',
                           fontWeight: 700,
                           cursor: 'pointer',
+                          textAlign: 'center',
                         }}
+                        title={opt.title}
                       >
-                        {pct}%
+                        {opt.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {/* Campo de Legenda / Texto do Link */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                    Alinhamento:
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    {detectedMediaType === 'link' ? 'Texto do Hiperlink (âncora):' : 'Legenda ou Descrição (Opcional):'}
                   </label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {(['left', 'center', 'right'] as const).map((aln) => (
-                      <button
-                        key={aln}
-                        type="button"
-                        onClick={() => setImageInsertAlign(aln)}
-                        style={{
-                          flex: 1,
-                          padding: '4px 0',
-                          borderRadius: '4px',
-                          border: `1px solid ${imageInsertAlign === aln ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-                          background: imageInsertAlign === aln ? 'var(--color-primary)' : 'transparent',
-                          color: imageInsertAlign === aln ? '#fff' : 'var(--text-main)',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                        title={aln === 'left' ? 'Esquerda' : aln === 'right' ? 'Direita' : 'Centro'}
-                      >
-                        {aln === 'left' ? <AlignLeft size={13} /> : aln === 'right' ? <AlignRight size={13} /> : <AlignCenter size={13} />}
-                      </button>
-                    ))}
+                  <input
+                    type="text"
+                    placeholder={
+                      detectedMediaType === 'link'
+                        ? 'Ex: Clique aqui para acessar o portal'
+                        : detectedMediaType === 'video'
+                        ? 'Ex: Demonstração da conciliação bancária'
+                        : 'Ex: Tela de configuração de extratos'
+                    }
+                    value={mediaCaption}
+                    onChange={(e) => setMediaCaption(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--text-main)',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                {/* Ajustes de Tamanho e Alinhamento (apenas para Imagem ou Vídeo) */}
+                {detectedMediaType !== 'link' && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1.2fr 1fr',
+                      gap: '10px',
+                      background: 'var(--bg-surface)',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                        Largura Inicial:
+                      </label>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {[35, 50, 75, 100].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setMediaInsertWidth(pct)}
+                            style={{
+                              flex: 1,
+                              padding: '4px 0',
+                              borderRadius: '4px',
+                              border: `1px solid ${mediaInsertWidth === pct ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                              background: mediaInsertWidth === pct ? 'var(--color-primary)' : 'transparent',
+                              color: mediaInsertWidth === pct ? '#fff' : 'var(--text-main)',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {pct}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                        Alinhamento:
+                      </label>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {(['left', 'center', 'right'] as const).map((aln) => (
+                          <button
+                            key={aln}
+                            type="button"
+                            onClick={() => setMediaInsertAlign(aln)}
+                            style={{
+                              flex: 1,
+                              padding: '4px 0',
+                              borderRadius: '4px',
+                              border: `1px solid ${mediaInsertAlign === aln ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                              background: mediaInsertAlign === aln ? 'var(--color-primary)' : 'transparent',
+                              color: mediaInsertAlign === aln ? '#fff' : 'var(--text-main)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            title={aln === 'left' ? 'Esquerda' : aln === 'right' ? 'Direita' : 'Centro'}
+                          >
+                            {aln === 'left' ? <AlignLeft size={13} /> : aln === 'right' ? <AlignRight size={13} /> : <AlignCenter size={13} />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                {/* Prévia Instantânea */}
+                {mediaUrl.trim() && (
+                  <div
+                    style={{
+                      background: 'var(--bg-surface)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px dashed var(--border-subtle)',
+                      padding: '10px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <span style={{ display: 'block', fontSize: '0.71rem', fontWeight: 700, color: 'var(--text-subtle)', marginBottom: '6px' }}>
+                      Prévia do elemento a ser inserido:
+                    </span>
+                    {detectedMediaType === 'image' && (
+                      <img
+                        src={mediaUrl.trim()}
+                        alt="Prévia"
+                        style={{ maxWidth: '100%', maxHeight: '160px', borderRadius: '6px', objectFit: 'contain' }}
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    )}
+                    {detectedMediaType === 'video' && (
+                      <div style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 600 }}>
+                        🎬 Player de vídeo ({mediaUrl.trim().includes('youtu') ? 'YouTube' : mediaUrl.trim().includes('vimeo') ? 'Vimeo' : 'MP4/WebM'})
+                      </div>
+                    )}
+                    {detectedMediaType === 'link' && (
+                      <div style={{ fontSize: '0.84rem' }}>
+                        🔗 <span style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>{mediaCaption || mediaUrl.trim()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setIsMediaModalOpen(false)}
+                    style={{ flex: 1, padding: '10px' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleConfirmMediaModal}
+                    disabled={!mediaUrl.trim()}
+                    style={{ flex: 1, padding: '10px', fontWeight: 700 }}
+                  >
+                    {detectedMediaType === 'video'
+                      ? 'Inserir Vídeo'
+                      : detectedMediaType === 'image'
+                      ? 'Inserir Imagem'
+                      : 'Inserir Link'}
+                  </button>
                 </div>
               </div>
+            )}
 
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleConfirmImageUrl}
-                disabled={!imageUrl.trim()}
-                style={{ padding: '10px', marginTop: '4px', fontWeight: 700 }}
-              >
-                Inserir Link da Imagem
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE INSERÇÃO DE VÍDEO POR LINK */}
-      {isVideoModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-            padding: '20px',
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsVideoModalOpen(false);
-          }}
-        >
-          <div
-            style={{
-              width: '100%',
-              maxWidth: '480px',
-              background: 'var(--bg-card, #0f172a)',
-              borderRadius: '16px',
-              border: '1px solid var(--border-subtle)',
-              padding: '24px',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Video size={18} color="#ef4444" />
-                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>
-                  Inserir Vídeo por Link
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsVideoModalOpen(false)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  URL ou Link do Vídeo:
-                </label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://www.youtube.com/watch?v=... ou https://youtu.be/... ou https://vimeo.com/..."
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
+            {/* Conteúdo Aba 2: Upload de Imagem do Computador */}
+            {mediaActiveTab === 'upload' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div
+                  onClick={() => imageUploadRef.current?.click()}
                   style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--text-main)',
-                    fontSize: '0.85rem',
-                    outline: 'none',
+                    border: '2px dashed var(--color-primary)',
+                    borderRadius: '12px',
+                    padding: '30px 20px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    background: 'rgba(92, 183, 128, 0.05)',
+                    transition: 'all 0.2s ease',
                   }}
-                  autoFocus
-                />
-                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-                  Suporta links do YouTube, Vimeo ou arquivos diretos de vídeo (.mp4, .webm).
-                </span>
-              </div>
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(92, 183, 128, 0.1)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(92, 183, 128, 0.05)')}
+                >
+                  <Upload size={32} color="var(--color-primary)" style={{ margin: '0 auto 10px' }} />
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px' }}>
+                    Clique aqui para escolher uma imagem do seu computador
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                    Suporta PNG, JPG, JPEG, SVG, WebP, GIF (redimensionamento com alças ativado)
+                  </div>
+                </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Legenda ou Descrição do Vídeo (Opcional):
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Demonstração do fluxo de conferência de extratos"
-                  value={videoCaption}
-                  onChange={(e) => setVideoCaption(e.target.value)}
+                {/* Ajustes de Tamanho e Alinhamento para a imagem do upload */}
+                <div
                   style={{
-                    width: '100%',
+                    display: 'grid',
+                    gridTemplateColumns: '1.2fr 1fr',
+                    gap: '10px',
+                    background: 'var(--bg-surface)',
                     padding: '10px 12px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
                     borderRadius: 'var(--radius-md)',
-                    color: 'var(--text-main)',
-                    fontSize: '0.85rem',
-                    outline: 'none',
+                    border: '1px solid var(--border-subtle)',
                   }}
-                />
-              </div>
+                >
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                      Largura Inicial da Imagem:
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[35, 50, 75, 100].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => setMediaInsertWidth(pct)}
+                          style={{
+                            flex: 1,
+                            padding: '4px 0',
+                            borderRadius: '4px',
+                            border: `1px solid ${mediaInsertWidth === pct ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                            background: mediaInsertWidth === pct ? 'var(--color-primary)' : 'transparent',
+                            color: mediaInsertWidth === pct ? '#fff' : 'var(--text-main)',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Ajuste de Tamanho e Alinhamento do Vídeo */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', background: 'var(--bg-surface)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                    Tamanho do Vídeo:
-                  </label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {[35, 50, 75, 100].map((pct) => (
-                      <button
-                        key={pct}
-                        type="button"
-                        onClick={() => setVideoInsertWidth(pct)}
-                        style={{
-                          flex: 1,
-                          padding: '4px 0',
-                          borderRadius: '4px',
-                          border: `1px solid ${videoInsertWidth === pct ? '#ef4444' : 'var(--border-subtle)'}`,
-                          background: videoInsertWidth === pct ? '#ef4444' : 'transparent',
-                          color: videoInsertWidth === pct ? '#fff' : 'var(--text-main)',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {pct}%
-                      </button>
-                    ))}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                      Alinhamento:
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {(['left', 'center', 'right'] as const).map((aln) => (
+                        <button
+                          key={aln}
+                          type="button"
+                          onClick={() => setMediaInsertAlign(aln)}
+                          style={{
+                            flex: 1,
+                            padding: '4px 0',
+                            borderRadius: '4px',
+                            border: `1px solid ${mediaInsertAlign === aln ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                            background: mediaInsertAlign === aln ? 'var(--color-primary)' : 'transparent',
+                            color: mediaInsertAlign === aln ? '#fff' : 'var(--text-main)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          title={aln === 'left' ? 'Esquerda' : aln === 'right' ? 'Direita' : 'Centro'}
+                        >
+                          {aln === 'left' ? <AlignLeft size={13} /> : aln === 'right' ? <AlignRight size={13} /> : <AlignCenter size={13} />}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                    Alinhamento:
-                  </label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {(['left', 'center', 'right'] as const).map((aln) => (
-                      <button
-                        key={aln}
-                        type="button"
-                        onClick={() => setVideoInsertAlign(aln)}
-                        style={{
-                          flex: 1,
-                          padding: '4px 0',
-                          borderRadius: '4px',
-                          border: `1px solid ${videoInsertAlign === aln ? '#ef4444' : 'var(--border-subtle)'}`,
-                          background: videoInsertAlign === aln ? '#ef4444' : 'transparent',
-                          color: videoInsertAlign === aln ? '#fff' : 'var(--text-main)',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                        title={aln === 'left' ? 'Esquerda' : aln === 'right' ? 'Direita' : 'Centro'}
-                      >
-                        {aln === 'left' ? <AlignLeft size={13} /> : aln === 'right' ? <AlignRight size={13} /> : <AlignCenter size={13} />}
-                      </button>
-                    ))}
-                  </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setIsMediaModalOpen(false)}
+                    style={{ flex: 1, padding: '10px' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => imageUploadRef.current?.click()}
+                    style={{ flex: 1, padding: '10px', fontWeight: 700 }}
+                  >
+                    Escolher Arquivo...
+                  </button>
                 </div>
               </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsVideoModalOpen(false)}
-                  style={{ flex: 1, padding: '10px' }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleConfirmVideoUrl}
-                  disabled={!videoUrl.trim()}
-                  style={{ flex: 1, padding: '10px', fontWeight: 700 }}
-                >
-                  Inserir Vídeo
-                </button>
-              </div>
-            </div>
+            )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

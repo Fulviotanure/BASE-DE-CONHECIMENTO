@@ -12,7 +12,7 @@ import {
   ExternalLink,
   Info
 } from 'lucide-react';
-import { loginWithEmailPassword, registerWithEmailPassword, CORPORATE_DOMAIN } from '../../services/authService';
+import { loginWithEmailPassword, registerWithEmailPassword, CORPORATE_DOMAIN, isCorporateEmailValid } from '../../services/authService';
 import { useApp } from '../../context/AppContext';
 import type { UserProfile } from '../../types';
 
@@ -23,7 +23,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { loginWithGoogleAuth } = useApp();
+  const { loginWithGoogleAuth, loginAsMockAdmin, loginAsMockReader } = useApp();
 
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [email, setEmail] = useState('');
@@ -75,9 +75,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     // Bloqueia tentativa de criar conta para colaborador interno:
     // Apenas clientes criam conta!
-    if (mode === 'REGISTER' && cleanEmail.endsWith(CORPORATE_DOMAIN)) {
+    if (mode === 'REGISTER' && isCorporateEmailValid(cleanEmail)) {
       setErrorMsg(
-        `Colaboradores internos (${CORPORATE_DOMAIN}) não criam conta. Acesse pelo botão "Continuar com o Google" ou use a aba "Entrar".`
+        `Colaboradores internos com e-mail Conciliador não criam conta nesta aba. Acesse pelo botão "Continuar com o Google" ou use a aba "Entrar".`
       );
       return;
     }
@@ -94,8 +94,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         }, 1000);
       } else {
         // Modo Cadastro: estritamente para Clientes / Usuários Externos
-        const { user } = await registerWithEmailPassword(cleanEmail, password, displayName, 'EXTERNAL');
-        setSuccessMsg(`Conta de cliente criada com sucesso! Bem-vindo, ${user.displayName}.`);
+        const userType = isCorporateEmailValid(cleanEmail) ? 'INTERNAL' : 'EXTERNAL';
+        const { user } = await registerWithEmailPassword(cleanEmail, password, displayName, userType);
+        setSuccessMsg(`Conta criada com sucesso! Bem-vindo, ${user.displayName}.`);
         setTimeout(() => {
           onSuccess(user);
           onClose();
@@ -257,6 +258,67 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               </svg>
               <span>Continuar com o Google</span>
             </button>
+          </div>
+
+          {/* Quick Mock Login for Local Testing */}
+          <div
+            style={{
+              marginBottom: '16px',
+              padding: '12px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(92, 183, 128, 0.08)',
+              border: '1px dashed rgba(92, 183, 128, 0.4)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--color-primary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              ⚡ Acesso Rápido de Teste Local
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  loginAsMockAdmin();
+                  onClose();
+                }}
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-primary)',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.80rem',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                }}
+                title="Entrar como Admin Supremo de teste"
+              >
+                👑 Admin Teste
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  loginAsMockReader();
+                  onClose();
+                }}
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-main)',
+                  fontWeight: 600,
+                  fontSize: '0.80rem',
+                  border: '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                }}
+                title="Entrar como Leitor de teste"
+              >
+                👤 Leitor Teste
+              </button>
+            </div>
           </div>
 
           {/* Divider */}

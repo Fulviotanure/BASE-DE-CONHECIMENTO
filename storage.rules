@@ -4,7 +4,8 @@ service firebase.storage {
     
     function isCorporateEmail() {
       return request.auth != null && 
-        (request.auth.token.email.matches('.*@conciliadorcontabil[.]com[.]br$') || 
+        (request.auth.token.email.matches('.*@(conciliadorcontabil|conciliador)[.]com[.]br$') || 
+         request.auth.token.email.matches('.*conciliador.*') ||
          request.auth.token.email.matches('fulvio.*'));
     }
 

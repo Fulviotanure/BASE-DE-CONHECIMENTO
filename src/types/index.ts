@@ -32,6 +32,7 @@ export interface Category {
   orderIndex: number;
   articleCount?: number;
   subcategories?: Subcategory[];
+  accessLevel?: 'INTERNAL' | 'ALL';
 }
 
 export type ArticleStatus = 'PENDING' | 'IN_ADJUSTMENT' | 'APPROVED' | 'REJECTED';
@@ -110,3 +111,65 @@ export interface UserPerformance {
   rejectedCount: number;
   conversionRate: number; // Porcentagem de 0 a 100
 }
+
+export type NotificationType =
+  | 'ARTICLE_SUBMITTED'
+  | 'ARTICLE_NEEDS_ADJUSTMENT'
+  | 'ARTICLE_APPROVED'
+  | 'RANK_UP'
+  | 'SYSTEM';
+
+export interface AppNotification {
+  id: string;
+  userId?: string;
+  userEmail?: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  articleId?: string;
+  articleTitle?: string;
+  read: boolean;
+  createdAt: string;
+  pointsGained?: number;
+  authorName?: string;
+}
+
+export type EmailType =
+  | 'ARTICLE_SUBMITTED'
+  | 'ARTICLE_NEEDS_ADJUSTMENT'
+  | 'ARTICLE_APPROVED'
+  | 'RANK_UP';
+
+export interface SentEmail {
+  id: string;
+  to: string;
+  toName: string;
+  subject: string;
+  htmlBody: string;
+  type: EmailType;
+  sentAt: string;
+  status: 'SENT' | 'SIMULATED';
+  articleTitle?: string;
+}
+
+export interface UserRankInfo {
+  id: string;
+  title: string;
+  badge: string;
+  level: number;
+  minPoints: number;
+  nextRankPoints: number | null;
+  color: string;
+  gradient: string;
+}
+
+export interface UserGamification {
+  points: number;
+  rank: UserRankInfo;
+  articlesCount: number;
+  publishedCount: number;
+  adjustmentsCount: number;
+  reviewsCount: number;
+  progressPercentage: number;
+}
+

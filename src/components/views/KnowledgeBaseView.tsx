@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Compass,
   Database,
@@ -26,8 +26,13 @@ import {
   ThumbsUp,
   ThumbsDown,
   Plus,
+  Layers,
+  Search,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isInternalUser, isExternalUser } from '../../services/authService';
+import { CategoryIcon, getCategoryThemeColors } from '../../utils/categoryIcons';
 import type { Article } from '../../types';
 import { INITIAL_ARTICLES } from '../../data/initialSeed';
 import { useArticleImageFallback } from '../../utils/imageFallback';
@@ -36,12 +41,14 @@ interface KnowledgeBaseViewProps {
   onOpenNewArticle: () => void;
   onProposeEdit?: (art: Article) => void;
   onEditArticle?: (art: Article) => void;
+  onOpenModuleManagement?: () => void;
 }
 
 export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ 
   onOpenNewArticle,
   onProposeEdit,
   onEditArticle,
+  onOpenModuleManagement,
 }) => {
   const {
     categories,
@@ -54,44 +61,76 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
     voteArticle,
     currentUser,
     theme,
+    setIsSearchOpen,
   } = useApp();
 
   const isDark = theme === 'dark';
 
   const [copiedLink, setCopiedLink] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const articleBodyRef = React.useRef<HTMLDivElement>(null);
 
   // Intercepta imagens quebradas para exibir fallback amigável
   useArticleImageFallback(articleBodyRef, [selectedArticle?.id, selectedArticle?.contentHtml]);
 
-  // Mapeamento de ícones por nome
+  // Mapeamento dinâmico de ícones por nome (suporta qualquer ícone Lucide)
   const getCategoryIcon = (iconName: string, size = 20) => {
-    switch (iconName) {
-      case 'Compass': return <Compass size={size} color="#5cb780" />;
-      case 'Database': return <Database size={size} color="#6c63ff" />;
-      case 'FileDown': return <FileDown size={size} color="#3b82f6" />;
-      case 'Sliders': return <Sliders size={size} color="#f59e0b" />;
-      case 'Scale': return <Scale size={size} color="#10b981" />;
-      case 'FileUp': return <FileUp size={size} color="#8b5cf6" />;
-      case 'Globe': return <Globe size={size} color="#06b6d4" />;
-      case 'ArrowLeftRight': return <ArrowLeftRight size={size} color="#ec4899" />;
-      case 'HelpCircle': return <HelpCircle size={size} color="#f97316" />;
-      case 'LifeBuoy': return <LifeBuoy size={size} color="#ef4444" />;
-      case 'BookMarked': return <BookMarked size={size} color="#38bdf8" />;
-      case 'Terminal': return <Terminal size={size} color="#10b981" />;
-      default: return <Compass size={size} color="#5cb780" />;
-    }
+    const theme = getCategoryThemeColors(iconName);
+    return <CategoryIcon iconName={iconName} size={size} color={theme.color} />;
   };
 
-  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL';
-  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.email?.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+  const isInternal = isInternalUser(currentUser);
+  const isExternal = isExternalUser(currentUser);
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isAdmin = isSuperAdmin || currentUser?.role === 'ADMIN';
+
+  // Se o usuário alternar para o modo leitor/externo e um artigo confidencial, interno ou playbook estiver aberto, retorna à listagem pública
+  useEffect(() => {
+    if (selectedArticle && isExternal) {
+      const parentCat = categories.find((c) => c.id === selectedArticle.categoryId);
+      const isInternalMod = parentCat
+        ? parentCat.accessLevel === 'INTERNAL' ||
+          parentCat.title.toLowerCase().includes('playbook') ||
+          parentCat.id === 'cat-11' ||
+          parentCat.id === 'cat-12'
+        : false;
+      const isPb =
+        selectedArticle.categoryName?.toLowerCase().includes('playbook') ||
+        selectedArticle.categoryId === 'cat-11' ||
+        selectedArticle.categoryId === 'cat-12';
+      const isRestricted =
+        isInternalMod ||
+        isPb ||
+        selectedArticle.accessLevel === 'INTERNAL' ||
+        selectedArticle.currentStatus !== 'APPROVED';
+      if (isRestricted) {
+        setSelectedArticle(null);
+      }
+    }
+  }, [selectedArticle, isExternal, setSelectedArticle, categories]);
+
+  // Módulos internos são estritamente para colaboradores internos (nunca visíveis para leitores externos)
+  const isInternalCategory = (cat: { id: string; title: string; accessLevel?: 'INTERNAL' | 'ALL' }) =>
+    cat.accessLevel === 'INTERNAL' ||
+    cat.title.toLowerCase().includes('playbook') ||
+    cat.id === 'cat-11' ||
+    cat.id === 'cat-12';
+
+  const displayedCategories = categories.filter((c) => !isExternal || !isInternalCategory(c));
 
   // Artigos visíveis com fallback imediato
   const sourceArticles = articles && articles.length > 0 ? articles : INITIAL_ARTICLES;
 
   const visibleArticles = sourceArticles.filter((a) => {
     if (isExternal) {
+      const parentCat = categories.find((c) => c.id === a.categoryId);
+      if (parentCat && isInternalCategory(parentCat)) return false;
+
+      const isPb =
+        a.categoryName?.toLowerCase().includes('playbook') ||
+        a.categoryId === 'cat-11' ||
+        a.categoryId === 'cat-12';
+      if (isPb) return false;
       return a.currentStatus === 'APPROVED' && (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL');
     }
     if (isAdmin) return true;
@@ -100,6 +139,19 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
       a.authorId === currentUser?.uid ||
       a.authorEmail?.toLowerCase() === currentUser?.email?.toLowerCase()
     );
+  });
+
+  // Artigos filtrados por categoria e termo de pesquisa
+  const filteredArticles = visibleArticles.filter((art) => {
+    if (selectedCategory && art.categoryId !== selectedCategory) return false;
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const matchTitle = art.title.toLowerCase().includes(q);
+    const matchCategory = art.categoryName?.toLowerCase().includes(q) || false;
+    const matchTags = art.tags?.some((t) => t.toLowerCase().includes(q)) || false;
+    const matchContent = art.contentHtml?.toLowerCase().includes(q) || false;
+    const matchCode = art.code?.toLowerCase().includes(q) || false;
+    return matchTitle || matchCategory || matchTags || matchContent || matchCode;
   });
 
   const handleSelectArticle = (art: Article) => {
@@ -433,7 +485,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
            CATÁLOGO GERAL DE MÓDULOS E MANUAIS (VISÃO ALARGADA)
            ================================================================== */
         <div style={{ width: '100%' }}>
-          {/* Hero Welcome Banner */}
+          {/* Hero Welcome Banner com Busca Embaixo do Título */}
           <div
             style={{
               background: 'linear-gradient(135deg, rgba(92, 183, 128, 0.15) 0%, rgba(108, 99, 255, 0.12) 100%)',
@@ -442,84 +494,139 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               padding: '32px 36px',
               marginBottom: '28px',
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              flexDirection: 'column',
               boxShadow: 'var(--shadow-md)',
-              flexWrap: 'wrap',
-              gap: '16px',
+              gap: '20px',
             }}
           >
-            <div>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Central de Documentação Oficial
-              </span>
-              <h1 style={{ fontSize: '2.1rem', margin: '6px 0 10px 0', color: 'var(--text-main)', fontWeight: 800 }}>
-                Base de Conhecimento Conciliador Contábil
-              </h1>
-              <p style={{ color: 'var(--text-muted)', maxWidth: '820px', fontSize: '0.95rem', lineHeight: 1.6 }}>
-                Consulte manuais operacionais, procedimentos, informações orientações . insira seu conheciemnto e compartilhe com colaboradores e clientes .
-              </p>
-            </div>
-            {!isExternal && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={onOpenNewArticle}
-                style={{ padding: '12px 22px', fontSize: '0.92rem', fontWeight: 700 }}
-              >
-                <Plus size={16} />
-                <span>Sugerir Nova Solução</span>
-              </button>
-            )}
-          </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Central de Documentação Oficial
+                </span>
+                <h1 style={{ fontSize: '2.1rem', margin: '6px 0 10px 0', color: 'var(--text-main)', fontWeight: 800 }}>
+                  Base de Conhecimento Conciliador Contábil
+                </h1>
+                <p style={{ color: 'var(--text-muted)', maxWidth: '820px', fontSize: '0.95rem', lineHeight: 1.6, margin: 0 }}>
+                  Consulte manuais operacionais, procedimentos, regras e orientações oficiais do Conciliador Contábil.
+                </p>
+              </div>
 
-          {/* Filtros em Pílulas (Pills) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '24px' }}>
-            <button
-              type="button"
-              onClick={() => setSelectedCategory(null)}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {isAdmin && onOpenModuleManagement && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={onOpenModuleManagement}
+                    style={{
+                      padding: '12px 18px',
+                      fontSize: '0.90rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                    title="Painel de criação, ícones e exclusão de módulos"
+                  >
+                    <Layers size={16} color="var(--color-primary)" />
+                    <span>Gerenciar Módulos</span>
+                  </button>
+                )}
+
+                {!isExternal && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={onOpenNewArticle}
+                    style={{ padding: '12px 22px', fontSize: '0.92rem', fontWeight: 700 }}
+                  >
+                    <Plus size={16} />
+                    <span>Criar Novo Artigo</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Barra de Pesquisa Embaixo do Título */}
+            <div
               style={{
-                padding: '7px 16px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                background: selectedCategory === null ? 'var(--color-primary)' : 'var(--bg-card)',
-                color: selectedCategory === null ? '#fff' : 'var(--text-muted)',
-                border: `1px solid ${selectedCategory === null ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
+                width: '100%',
+                maxWidth: '820px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                background: 'var(--bg-card)',
+                border: '1.5px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-lg)',
+                padding: '9px 16px',
+                boxShadow: '0 4px 18px rgba(0, 0, 0, 0.08)',
+                transition: 'border-color 0.2s, box-shadow 0.2s',
               }}
             >
-              Todos os Módulos ({visibleArticles.length})
-            </button>
-            {categories.map((cat) => {
-              const isSel = selectedCategory === cat.id;
-              const count = visibleArticles.filter((a) => a.categoryId === cat.id).length;
-              return (
+              <Search size={20} color="var(--color-primary)" style={{ flexShrink: 0 }} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar manuais, procedimentos, soluções, erros ou palavras-chave..."
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: 'var(--text-main)',
+                  fontSize: '0.98rem',
+                  fontWeight: 500,
+                }}
+              />
+              {searchQuery && (
                 <button
-                  key={cat.id}
                   type="button"
-                  onClick={() => setSelectedCategory(cat.id)}
+                  onClick={() => setSearchQuery('')}
+                  title="Limpar pesquisa"
                   style={{
-                    padding: '7px 16px',
-                    borderRadius: 'var(--radius-full)',
-                    fontSize: '0.84rem',
-                    fontWeight: 700,
-                    background: isSel ? 'var(--color-primary)' : 'var(--bg-card)',
-                    color: isSel ? '#fff' : 'var(--text-muted)',
-                    border: `1px solid ${isSel ? 'var(--color-primary)' : 'var(--border-subtle)'}`,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
                     cursor: 'pointer',
-                    whiteSpace: 'nowrap',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
                   }}
                 >
-                  {cat.title} ({count})
+                  <X size={16} />
                 </button>
-              );
-            })}
+              )}
+              <button
+                type="button"
+                onClick={() => setIsSearchOpen(true)}
+                title="Abrir pesquisa global Spotlight (Ctrl + K)"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '5px 11px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-subtle)',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <span>Spotlight</span>
+                <kbd style={{ fontSize: '0.70rem', background: 'var(--bg-card)', padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>Ctrl K</kbd>
+              </button>
+            </div>
           </div>
 
-          {/* Grade de Módulos (Inclui Playbook N1 e Playbook N2) */}
-          {!selectedCategory && (
+          {/* Grade de Módulos (Oculta quando há filtro de módulo selecionado ou busca digitada) */}
+          {!selectedCategory && !searchQuery.trim() && (
             <div style={{ marginBottom: '40px' }}>
               <h2 style={{ fontSize: '1.3rem', marginBottom: '16px', color: 'var(--text-main)', fontWeight: 700 }}>
                 Módulos Operacionais do Sistema
@@ -531,7 +638,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                   gap: '18px',
                 }}
               >
-                {categories.map((cat) => {
+                {displayedCategories.map((cat) => {
                   const count = visibleArticles.filter((a) => a.categoryId === cat.id).length;
                   return (
                     <div
@@ -614,23 +721,75 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             </div>
           )}
 
-          {/* Listagem de Artigos Disponíveis */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '1.3rem', color: 'var(--text-main)', fontWeight: 700 }}>
-                {selectedCategory
-                  ? `Manuais de ${categories.find((c) => c.id === selectedCategory)?.title || 'Módulo'}`
-                  : 'Todos os Artigos e Procedimentos Oficiais'}
-              </h2>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
-                {visibleArticles.filter((a) => !selectedCategory || a.categoryId === selectedCategory).length} manuais encontrados
-              </span>
-            </div>
+          {/* Listagem de Artigos Disponíveis (Exibida apenas ao selecionar um módulo ou ao pesquisar) */}
+          {(selectedCategory || searchQuery.trim()) && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1.3rem', color: 'var(--text-main)', fontWeight: 700, margin: 0 }}>
+                    {searchQuery.trim()
+                      ? `Resultados para "${searchQuery.trim()}"`
+                      : `Manuais de ${categories.find((c) => c.id === selectedCategory)?.title || 'Módulo'}`}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setSearchQuery('');
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '5px 12px',
+                      fontSize: '0.80rem',
+                      fontWeight: 600,
+                      borderRadius: 'var(--radius-md)',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--color-primary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <ArrowLeft size={13} />
+                    <span>Ver todos os módulos</span>
+                  </button>
+                </div>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
+                  {filteredArticles.length} {filteredArticles.length === 1 ? 'manual encontrado' : 'manuais encontrados'}
+                </span>
+              </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {visibleArticles
-                .filter((a) => !selectedCategory || a.categoryId === selectedCategory)
-                .map((art) => (
+            {filteredArticles.length === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: '48px 24px',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <Search size={36} color="var(--text-subtle)" style={{ marginBottom: '12px' }} />
+                <h3 style={{ fontSize: '1.1rem', color: 'var(--text-main)', marginBottom: '6px' }}>Nenhum manual encontrado</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '16px' }}>
+                  Não encontramos artigos correspondentes aos critérios de busca ou módulo selecionado.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedCategory(null);
+                  }}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {filteredArticles.map((art) => (
                   <div
                     key={art.id}
                     className="card"
@@ -698,10 +857,12 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                     </div>
                   </div>
                 ))}
-            </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   LogOut, 
@@ -13,6 +14,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isInternalUser, isExternalUser, isCorporateEmailValid, isSuperAdminUser } from '../../services/authService';
+import { UserRankBadge } from '../gamification/UserRankBadge';
 import type { UserRole } from '../../types';
 
 export const UserProfileModal: React.FC = () => {
@@ -26,12 +29,22 @@ export const UserProfileModal: React.FC = () => {
     users
   } = useApp();
 
+  React.useEffect(() => {
+    if (isProfileModalOpen) {
+      const original = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = original;
+      };
+    }
+  }, [isProfileModalOpen]);
+
   if (!isProfileModalOpen || !currentUser) return null;
 
-  const isCorporate = currentUser.email.toLowerCase().endsWith('@conciliadorcontabil.com.br');
-  const isExternal = currentUser.role === 'READER' || currentUser.userType === 'EXTERNAL' || !isCorporate;
-  const isInternal = !isExternal && isCorporate;
-  const canSimulate = isPermanentSuperAdmin && currentUser.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+  const isCorporate = isCorporateEmailValid(currentUser.email);
+  const isInternal = isInternalUser(currentUser);
+  const isExternal = isExternalUser(currentUser);
+  const canSimulate = isPermanentSuperAdmin && Boolean(currentUser.email && isSuperAdminUser(currentUser.email));
 
   const roleLabel = {
     SUPER_ADMIN: '👑 Super Administrador (Fixo)',
@@ -49,29 +62,39 @@ export const UserProfileModal: React.FC = () => {
     await logout();
   };
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'rgba(0, 0, 0, 0.78)',
         backdropFilter: 'blur(6px)',
-        zIndex: 110,
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '20px',
+        padding: '16px',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onClick={() => setIsProfileModalOpen(false)}
     >
       <div
         style={{
           width: '100%',
-          maxWidth: '500px',
+          maxWidth: '520px',
+          maxHeight: 'min(90vh, 680px)',
+          display: 'flex',
+          flexDirection: 'column',
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-subtle)',
           borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-lg)',
+          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7), 0 0 25px rgba(92, 183, 128, 0.15)',
           overflow: 'hidden',
           animation: 'fadeIn 0.2s ease-out',
         }}
@@ -82,6 +105,7 @@ export const UserProfileModal: React.FC = () => {
           style={{ 
             height: '6px', 
             width: '100%', 
+            flexShrink: 0,
             background: isInternal 
               ? 'linear-gradient(90deg, #5cb780, #38bdf8, #6c63ff)' 
               : 'linear-gradient(90deg, #38bdf8, #6c63ff, #f59e0b)' 
@@ -94,9 +118,10 @@ export const UserProfileModal: React.FC = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '18px 24px',
+            padding: '16px 20px',
             borderBottom: '1px solid var(--border-subtle)',
             background: 'var(--bg-sidebar)',
+            flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -131,8 +156,8 @@ export const UserProfileModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: '24px' }}>
+        {/* Scrollable Body */}
+        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
           {/* Avatar & Display Name Card */}
           <div
             style={{
@@ -220,6 +245,11 @@ export const UserProfileModal: React.FC = () => {
                 <span style={{ wordBreak: 'break-all' }}>{currentUser.email}</span>
               </div>
             </div>
+          </div>
+
+          {/* Patente & Gamificação do Usuário */}
+          <div style={{ marginBottom: '20px' }}>
+            <UserRankBadge email={currentUser.email} size="lg" showProgress={true} />
           </div>
 
           {/* Details Grid */}
@@ -351,6 +381,7 @@ export const UserProfileModal: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

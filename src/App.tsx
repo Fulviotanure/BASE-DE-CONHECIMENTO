@@ -8,12 +8,15 @@ import { EditorialQueueView } from './components/views/EditorialQueueView';
 import { ToolsHubView } from './components/views/ToolsHubView';
 import { DashboardView } from './components/views/DashboardView';
 import { UserManagementView } from './components/views/UserManagementView';
+import { ModuleManagementView } from './components/views/ModuleManagementView';
 import { ArticleEditorView } from './components/views/ArticleEditorView';
 import { LoginPageView } from './components/views/LoginPageView';
-import { ExternalPortalView } from './components/views/ExternalPortalView';
 import { SearchSpotlightModal } from './components/search/SearchSpotlightModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
+import { CelebrationModal } from './components/gamification/CelebrationModal';
+import { AiAssistantBot } from './components/ai/AiAssistantBot';
+import { isInternalUser, isExternalUser, isCorporateEmailValid } from './services/authService';
 import type { Article } from './types';
 
 const MainApp: React.FC = () => {
@@ -25,11 +28,11 @@ const MainApp: React.FC = () => {
     setCurrentUser 
   } = useApp();
 
-  const isCorporate = Boolean(currentUser?.email?.toLowerCase().endsWith('@conciliadorcontabil.com.br'));
-  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL' || !isCorporate;
-  const isInternal = !isExternal && isCorporate;
+  const isCorporate = Boolean(currentUser?.email && isCorporateEmailValid(currentUser.email));
+  const isInternal = isInternalUser(currentUser);
+  const isExternal = isExternalUser(currentUser);
 
-  // Define a view inicial: sempre 'kb' se logado (unificado para cliente, leitor e interno)
+  // Define a view inicial: sempre 'kb' se logado (unificado para leitores e colaboradores internos)
   const [activeView, setActiveView] = useState<string>(() => {
     if (!currentUser) return 'landing';
     return 'kb';
@@ -44,7 +47,7 @@ const MainApp: React.FC = () => {
     if (!currentUser) {
       setActiveView('landing');
     } else {
-      // Clientes e leitores externos NUNCA podem acessar Ferramentas, Dashboard, Fila, Usuários ou Edição interna
+      // Leitores e clientes externos NUNCA acessam telas administrativas, de edição ou ferramentas
       if (isExternal && (activeView === 'dashboard' || activeView === 'queue' || activeView === 'users' || activeView === 'my-articles' || activeView === 'tools' || activeView === 'editor')) {
         setActiveView('kb');
       } else if (activeView === 'landing' || activeView === 'external-portal') {
@@ -83,7 +86,7 @@ const MainApp: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* Sidebar Navigation - unificada para leitores, clientes e colaboradores internos */}
+      {/* Sidebar Navigation - unificada para leitores e colaboradores internos */}
       {!isLanding && (
         <Sidebar
           activeView={activeView}
@@ -104,22 +107,17 @@ const MainApp: React.FC = () => {
             />
           )}
 
-          {/* Base de Conhecimento:
-              - Para CLIENTES e VISITANTES (isExternal): renderiza o portal moderno ExternalPortalView (com background, busca elegante, cards e leitura expandida)
-              - Para COLABORADORES INTERNOS (isInternal): renderiza KnowledgeBaseView
+          {/* Base de Conhecimento Oficial:
+              Unificada para colaboradores e leitores.
+              A página do leitor é a mesma página inicial, sem menus de configuração.
           */}
           {(activeView === 'kb' || activeView === 'external-portal') && (
-            isExternal ? (
-              <ExternalPortalView 
-                onSelectArticle={(art) => setSelectedArticle(art)}
-              />
-            ) : (
-              <KnowledgeBaseView 
-                onOpenNewArticle={handleOpenNewArticle} 
-                onProposeEdit={handleProposeArticleEdit}
-                onEditArticle={handleEditArticle}
-              />
-            )
+            <KnowledgeBaseView 
+              onOpenNewArticle={handleOpenNewArticle} 
+              onProposeEdit={handleProposeArticleEdit}
+              onEditArticle={handleEditArticle}
+              onOpenModuleManagement={() => setActiveView('modules')}
+            />
           )}
           {activeView === 'my-articles' && isInternal && (
             <MyArticlesView
@@ -132,8 +130,17 @@ const MainApp: React.FC = () => {
             <EditorialQueueView onEditArticle={handleEditArticle} />
           )}
           {activeView === 'tools' && isInternal && <ToolsHubView />}
-          {activeView === 'dashboard' && isInternal && <DashboardView />}
+          {(activeView === 'dashboard' || activeView === 'dashboard-articles' || activeView === 'dashboard-users') && isInternal && (
+            <DashboardView 
+              onSelectArticle={handleViewArticle}
+              initialTab={activeView === 'dashboard-users' ? 'users' : 'articles'}
+              onTabChange={(tab) => setActiveView(tab === 'users' ? 'dashboard-users' : 'dashboard-articles')}
+            />
+          )}
           {activeView === 'users' && isInternal && <UserManagementView />}
+          {activeView === 'modules' && isInternal && (
+            <ModuleManagementView onNavigateToKnowledgeBase={() => setActiveView('kb')} />
+          )}
           {activeView === 'editor' && (
             <ArticleEditorView
               editingArticle={editingArticle}
@@ -148,14 +155,12 @@ const MainApp: React.FC = () => {
       <SearchSpotlightModal
         onSelectArticle={(art) => {
           setSelectedArticle(art);
-          if (isInternal) {
-            setActiveView('kb');
-          } else {
-            setActiveView('external-portal');
-          }
+          setActiveView('kb');
         }}
         onSelectTool={() => {
-          setActiveView('tools');
+          if (isInternal) {
+            setActiveView('tools');
+          }
         }}
       />
 
@@ -170,6 +175,14 @@ const MainApp: React.FC = () => {
           setCurrentUser(user);
         }}
       />
+
+      {/* Celebration Modal (Parabéns + Gamificação + Confetes) */}
+      <CelebrationModal />
+
+      {/* Robô Assistente de IA - ConciliBot (Canto Inferior Direito) */}
+      {!isLanding && (
+        <AiAssistantBot onSelectArticle={handleViewArticle} />
+      )}
     </div>
   );
 };

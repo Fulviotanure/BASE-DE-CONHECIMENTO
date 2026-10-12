@@ -3,14 +3,14 @@
 
 > **Regra de Manutenção do Documento:** Este documento é o **quadro vivo de controle** do projeto. Sempre que houver qualquer alteração de escopo, adição de regra de negócio, nova função ou conclusão de etapa, este arquivo deve ser atualizado imediatamente antes de prosseguir.
 >
-> **Última Atualização:** 13/09/2026  
-> **Versão do Documento:** 1.3.0 (Deploy em Produção & GitHub Concluídos)  
+> **Última Atualização:** 04/10/2026  
+> **Versão do Documento:** 1.3.3 (Usuários Fictícios e Acesso Rápido para Teste Local)  
 > **Projeto Firebase:** `base-de-conhecimento-cc`  
 > **Console URL:** https://console.firebase.google.com/u/0/project/base-de-conhecimento-cc/overview?hl=pt-br  
 > **Hosting de Produção:** https://base-de-conhecimento-cc.web.app  
 > **Repositório GitHub:** https://github.com/Fulviotanure/BASE-DE-CONHECIMENTO  
 > **CLI Autenticado:** `fulvio@conciliadorcontabil.com.br`  
-> **Estado Atual:** 🚀 Sistema 100% publicado na nuvem e versionado no GitHub.
+> **Estado Atual:** 🚀 Sistema 100% publicado na nuvem e versionado no GitHub. Usuários fictícios de teste (Admin e Leitor) configurados para bypass de restrições em ambiente local.
 
 ---
 
@@ -31,6 +31,9 @@
 | **M11** | **Segurança & Firestore Rules** | Regras de segurança no Firestore e Storage garantindo isolamento por cargo | `backend-security-coder` / `security-auditor` | 📋 Especificado no Documento |
 | **M12** | **Carga Inicial do Acervo (Movidesk)**| Script de migração dos artigos e categorias existentes em conciliador-contabil2.movidesk.com/kb | `backend-development-feature-development` | ✅ Carga Inicial Semeada (10 Módulos) |
 | **M13** | **Garantia de Qualidade & Testes** | Testes de RBAC, transição de estados editoriais e auditoria de código | `tdd-orchestrator` / `code-reviewer` | ✅ Testado via Browser Subagent (0 Erros) |
+| **M14** | **Atalhos & Scripts de Teste** | Atalhos na Área de Trabalho (Teste Local e Produção) + script inicializador | `devops-troubleshooter` | ✅ Concluído |
+| **M15** | **Unificação da Tela de Leitor** | Remoção de tela separada de portal externo; leitor utiliza a mesma página inicial sem menus de configuração | `frontend-developer` | ✅ Implementado & Validado |
+| **M16** | **Usuários Fictícios & Bypass de Teste** | Criação de Admin Fictício e Leitor Fictício com 1-clique para teste local ágil | `frontend-developer` / `devops-troubleshooter` | ✅ Concluído & Validado |
 
 ---
 

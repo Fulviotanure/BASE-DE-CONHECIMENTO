@@ -3,6 +3,7 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   onSnapshot, 
   query, 
   where,
@@ -11,7 +12,8 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Article, UserProfile, ToolItem, Category, UserRole } from '../types';
+import type { Article, UserProfile, ToolItem, Category, UserRole, UserType } from '../types';
+import { isCorporateEmailValid } from './authService';
 import { INITIAL_CATEGORIES, INITIAL_ARTICLES, INITIAL_TOOLS, INITIAL_USERS } from '../data/initialSeed';
 
 // ----------------------------------------------------
@@ -86,13 +88,72 @@ export function subscribeUsers(onData: (users: UserProfile[]) => void): () => vo
   );
 }
 
-export async function updateUserRoleInFirestore(uid: string, newRole: UserRole): Promise<void> {
+export async function updateUserRoleInFirestore(
+  uid: string, 
+  newRole: UserRole, 
+  email?: string, 
+  fullUserData?: Partial<UserProfile>
+): Promise<void> {
   if (!db) return;
+  const isInternal = newRole !== 'READER' || (email ? isCorporateEmailValid(email) : false);
+  const userType: UserType = isInternal ? 'INTERNAL' : 'EXTERNAL';
+  const cleanEmail = email ? email.trim().toLowerCase() : undefined;
+
   const docRef = doc(db, 'users', uid);
-  await updateDoc(docRef, {
+  const dataToSave: any = {
     role: newRole,
+    userType,
     serverUpdatedAt: serverTimestamp(),
+  };
+
+  if (cleanEmail) {
+    dataToSave.email = cleanEmail;
+  }
+  if (fullUserData?.displayName) {
+    dataToSave.displayName = fullUserData.displayName;
+  }
+  if (fullUserData?.status) {
+    dataToSave.status = fullUserData.status;
+  }
+
+  await setDoc(docRef, dataToSave, { merge: true }).catch((err) => {
+    console.warn('Erro ao atualizar papel no Firestore:', err);
   });
+
+  if (cleanEmail) {
+    try {
+      // 1. Atualiza papel em outros documentos legados com o mesmo e-mail
+      const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const emailSnap = await getDocs(emailQuery);
+      for (const d of emailSnap.docs) {
+        if (d.id !== uid) {
+          await setDoc(
+            doc(db, 'users', d.id),
+            {
+              role: newRole,
+              userType,
+              serverUpdatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+      }
+
+      // 2. Grava registro perene de cargo pré-atribuído no Firestore
+      await setDoc(
+        doc(db, 'pre_assigned_roles', cleanEmail),
+        {
+          email: cleanEmail,
+          role: newRole,
+          userType,
+          serverUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+    } catch (err) {
+      console.warn('Erro ao sincronizar papel do usuário por e-mail no Firestore:', err);
+    }
+  }
 }
 
 export async function toggleUserStatusInFirestore(uid: string, newStatus: 'ACTIVE' | 'INACTIVE'): Promise<void> {
@@ -107,20 +168,32 @@ export async function toggleUserStatusInFirestore(uid: string, newStatus: 'ACTIV
 export async function deleteUserFromFirestore(uid: string, email?: string): Promise<void> {
   if (!db) return;
   try {
-    const userRef = doc(db, 'users', uid);
-    await setDoc(userRef, { status: 'INACTIVE' }, { merge: true }).catch(() => {});
-    // Remove o documento
-    const { deleteDoc: firestoreDeleteDoc } = await import('firebase/firestore');
-    await firestoreDeleteDoc(userRef).catch(() => {});
+    const cleanEmail = email?.trim().toLowerCase();
 
-    // Se fornecido e-mail, remove possíveis duplicatas legadas
-    if (email) {
-      const cleanEmail = email.trim().toLowerCase();
+    // Remove o documento principal
+    const userRef = doc(db, 'users', uid);
+    await deleteDoc(userRef).catch(() => {});
+
+    // Se fornecido e-mail, remove todas as duplicatas legadas e registra exclusão permanente
+    if (cleanEmail) {
       const emailQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
       const emailSnap = await getDocs(emailQuery);
       for (const d of emailSnap.docs) {
-        await firestoreDeleteDoc(doc(db, 'users', d.id)).catch(() => {});
+        await deleteDoc(doc(db, 'users', d.id)).catch(() => {});
       }
+
+      // Remove de pré-atribuições se houver
+      await deleteDoc(doc(db, 'pre_assigned_roles', cleanEmail)).catch(() => {});
+
+      // Registra tombstone para nunca ressuscitar
+      await setDoc(
+        doc(db, 'deleted_users', cleanEmail),
+        {
+          email: cleanEmail,
+          deletedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
     }
   } catch (err) {
     console.warn('Erro ao remover usuário do Firestore:', err);
@@ -129,8 +202,7 @@ export async function deleteUserFromFirestore(uid: string, email?: string): Prom
 
 /**
  * Grava usuários iniciais no Firestore se ainda não existirem.
- * Checa por UID e por e-mail corporativo para evitar duplicação.
- * Usa setDoc com merge:true para manter dados já gravados.
+ * Checa por UID, por e-mail corporativo e por exclusão prévia para evitar duplicatas e ressurreição.
  */
 export async function seedUsersToFirestore(): Promise<void> {
   if (!db) return;
@@ -148,9 +220,25 @@ export async function seedUsersToFirestore(): Promise<void> {
       }
     });
 
-    const toSeed = INITIAL_USERS.filter(
-      (u) => !existingUids.has(u.uid) && !existingEmails.has(u.email.toLowerCase().trim())
-    );
+    // Lê usuários deletados para não recriá-los
+    const deletedSnap = await getDocs(collection(db, 'deleted_users')).catch(() => null);
+    const deletedEmails = new Set<string>();
+    if (deletedSnap) {
+      deletedSnap.docs.forEach((d) => {
+        deletedEmails.add(d.id.toLowerCase().trim());
+        const data = d.data();
+        if (data?.email) deletedEmails.add(data.email.toLowerCase().trim());
+      });
+    }
+
+    const toSeed = INITIAL_USERS.filter((u) => {
+      const emailKey = u.email.toLowerCase().trim();
+      return (
+        !existingUids.has(u.uid) &&
+        !existingEmails.has(emailKey) &&
+        !deletedEmails.has(emailKey)
+      );
+    });
 
     for (const user of toSeed) {
       await setDoc(
@@ -219,6 +307,21 @@ export function subscribeCategories(onData: (categories: Category[]) => void): (
       console.warn('Erro ao escutar coleção categories do Firestore:', err);
     }
   );
+}
+
+export async function saveCategoryToFirestore(category: Category): Promise<void> {
+  if (!db) return;
+  const docRef = doc(db, 'categories', category.id);
+  await setDoc(docRef, {
+    ...category,
+    serverUpdatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteCategoryFromFirestore(categoryId: string): Promise<void> {
+  if (!db) return;
+  const docRef = doc(db, 'categories', categoryId);
+  await deleteDoc(docRef).catch(() => {});
 }
 
 export async function seedFirestoreWithMovideskData(): Promise<{ success: boolean; count: number }> {

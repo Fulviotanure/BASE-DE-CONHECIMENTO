@@ -8,6 +8,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Conceitos fundamentais, requisitos operacionais e primeiro acesso à plataforma.',
     icon: 'Compass',
     orderIndex: 1,
+    accessLevel: 'ALL',
     articleCount: 4,
     subcategories: [
       { id: 'sub-1-1', categoryId: 'cat-1', title: 'Visão Geral & Estrutura', slug: 'visao-geral' },
@@ -21,6 +22,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Empresas, planos de contas contábeis, bancos e mapeamento cadastral.',
     icon: 'Database',
     orderIndex: 2,
+    accessLevel: 'ALL',
     articleCount: 3,
     subcategories: [
       { id: 'sub-2-1', categoryId: 'cat-2', title: 'Usuários e Permissões', slug: 'usuarios' },
@@ -35,6 +37,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Importação de extratos OFX, PDF, planilhas Excel, arquivos TXT e relatórios.',
     icon: 'FileDown',
     orderIndex: 3,
+    accessLevel: 'ALL',
     articleCount: 8,
     subcategories: [
       { id: 'sub-3-1', categoryId: 'cat-3', title: 'Extratos e Arquivos', slug: 'extratos-arquivos' },
@@ -49,6 +52,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Configuração de inteligência de conciliação automática e históricos inteligentes.',
     icon: 'Sliders',
     orderIndex: 4,
+    accessLevel: 'ALL',
     articleCount: 6,
     subcategories: [
       { id: 'sub-4-1', categoryId: 'cat-4', title: 'Criação de Regras', slug: 'criacao-de-regras' },
@@ -62,6 +66,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Conciliação de saldos, baixa automática de partidas e eliminação de transitórias.',
     icon: 'Scale',
     orderIndex: 5,
+    accessLevel: 'ALL',
     articleCount: 5,
     subcategories: [
       { id: 'sub-5-1', categoryId: 'cat-5', title: 'Conferência de Saldos', slug: 'conferencia-saldos' },
@@ -76,6 +81,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Geração de lotes contábeis para Domínio, Alterdata, Fortes, Questor e outros.',
     icon: 'FileUp',
     orderIndex: 6,
+    accessLevel: 'ALL',
     articleCount: 7,
     subcategories: [
       { id: 'sub-6-1', categoryId: 'cat-6', title: 'Sistemas Contábeis (ERPs)', slug: 'erps' },
@@ -89,6 +95,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Captura direta e automatizada de extratos bancários sem intervenção manual.',
     icon: 'Globe',
     orderIndex: 7,
+    accessLevel: 'ALL',
     articleCount: 3,
     subcategories: [
       { id: 'sub-7-1', categoryId: 'cat-7', title: 'Conexão Bancária Direta', slug: 'conexao-bancaria' },
@@ -102,6 +109,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Exportação e clonagem de pacotes de regras entre empresas do mesmo grupo.',
     icon: 'ArrowLeftRight',
     orderIndex: 8,
+    accessLevel: 'ALL',
     articleCount: 2,
     subcategories: [
       { id: 'sub-8-1', categoryId: 'cat-8', title: 'Compartilhamento de Regras', slug: 'compartilhamento' },
@@ -115,6 +123,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Perguntas frequentes, alertas sobre formatos de extratos e dicas de produtividade.',
     icon: 'HelpCircle',
     orderIndex: 9,
+    accessLevel: 'ALL',
     articleCount: 11,
     subcategories: [
       { id: 'sub-9-1', categoryId: 'cat-9', title: 'Dúvidas Frequentes (FAQ)', slug: 'faq-geral' },
@@ -128,6 +137,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Fluxo oficial para acionamento do suporte técnico N3 e engenharia.',
     icon: 'LifeBuoy',
     orderIndex: 10,
+    accessLevel: 'ALL',
     articleCount: 2,
     subcategories: [
       { id: 'sub-10-1', categoryId: 'cat-10', title: 'Suporte Técnico N3', slug: 'suporte-n3' },
@@ -141,6 +151,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Procedimentos operacionais padronizados, roteiros de atendimento e guias de suporte N1.',
     icon: 'BookMarked',
     orderIndex: 11,
+    accessLevel: 'INTERNAL',
     articleCount: 0,
   },
   {
@@ -150,6 +161,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     description: 'Resoluções técnicas avançadas, diagnósticos de layout e engenharia de suporte N2.',
     icon: 'Terminal',
     orderIndex: 12,
+    accessLevel: 'INTERNAL',
     articleCount: 0,
   },
 ];
@@ -165,6 +177,17 @@ export const INITIAL_USERS: UserProfile[] = [
     status: 'ACTIVE',
     createdAt: '2026-01-10T08:00:00Z',
     lastLoginAt: '2026-09-13T12:45:00Z',
+  },
+  // Usuário Leitor Fictício para Teste Local
+  {
+    uid: 'usr-leitor-teste',
+    email: 'leitor.teste@empresa.com.br',
+    displayName: 'Cliente / Leitor (Teste Local)',
+    role: 'READER',
+    userType: 'EXTERNAL',
+    status: 'ACTIVE',
+    createdAt: '2026-01-01T00:00:00Z',
+    lastLoginAt: '2026-10-04T12:00:00Z',
   },
   // Colaboradores Internos (Iniciam todos como Operador - Fulvio promove conforme necessário)
   {

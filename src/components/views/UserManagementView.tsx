@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Users,
   ShieldCheck,
@@ -17,13 +18,17 @@ import {
   Calendar,
   Sparkles,
   Shield,
-  Clock
+  Clock,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isInternalUser, isCorporateEmailValid, isSuperAdminUser } from '../../services/authService';
+import { UserRankBadge } from '../gamification/UserRankBadge';
 import type { UserProfile, UserRole } from '../../types';
 
 export const UserManagementView: React.FC = () => {
-  const { users, articles, updateUserRole, toggleUserStatus, addNewUser, currentUser } = useApp();
+  const { users, articles, updateUserRole, toggleUserStatus, deleteUser, addNewUser, currentUser } = useApp();
 
   const [activeTab, setActiveTab] = useState<'COLABORADORES' | 'USUARIOS'>('COLABORADORES');
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,6 +36,20 @@ export const UserManagementView: React.FC = () => {
   // Modais
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedUserForProfile, setSelectedUserForProfile] = useState<UserProfile | null>(null);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Travar o scroll do body quando qualquer modal estiver aberto para manter o modal 100% no viewport
+  useEffect(() => {
+    const isAnyModalOpen = Boolean(selectedUserForProfile || isAddModalOpen || userToDelete);
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [selectedUserForProfile, isAddModalOpen, userToDelete]);
 
   // Form de cadastro
   const [newEmail, setNewEmail] = useState('');
@@ -47,7 +66,7 @@ export const UserManagementView: React.FC = () => {
       const cleanEmail = (u.email || '').trim().toLowerCase();
       if (!cleanEmail) return;
 
-      const isInternal = cleanEmail.endsWith('@conciliadorcontabil.com.br');
+      const isInternal = isCorporateEmailValid(cleanEmail) || isInternalUser(u);
       const targetMap = isInternal ? colabMap : usuMap;
 
       const existing = targetMap.get(cleanEmail);
@@ -59,7 +78,7 @@ export const UserManagementView: React.FC = () => {
         const existingHasLogin = Boolean(existing.lastLoginAt);
         const currentHasLogin = Boolean(u.lastLoginAt);
 
-        const preferredRole = (existing.role === 'SUPER_ADMIN' || existing.role === 'ADMIN' || existing.role === 'REVIEWER')
+        const preferredRole = (existing.role === 'SUPER_ADMIN' || existing.role === 'ADMIN' || existing.role === 'REVIEWER' || existing.role === 'OPERATOR')
           ? existing.role
           : u.role;
 
@@ -90,8 +109,8 @@ export const UserManagementView: React.FC = () => {
   // 3. Ordem alfabética por nome dentro do mesmo cargo
   const sortUsers = (list: UserProfile[]): UserProfile[] => {
     return [...list].sort((a, b) => {
-      const aIsFulvio = a.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
-      const bIsFulvio = b.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+      const aIsFulvio = isSuperAdminUser(a.email);
+      const bIsFulvio = isSuperAdminUser(b.email);
       if (aIsFulvio && !bIsFulvio) return -1;
       if (!aIsFulvio && bIsFulvio) return 1;
 
@@ -393,8 +412,8 @@ export const UserManagementView: React.FC = () => {
                 </tr>
               ) : (
                 currentList.map((u) => {
-                  const isFulvio = u.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
-                  const isInternal = u.userType === 'INTERNAL' && u.email.toLowerCase().endsWith('@conciliadorcontabil.com.br');
+                  const isFulvio = isSuperAdminUser(u.email);
+                  const isInternal = isInternalUser(u);
                   const situation = getUserSituation(u);
 
                   return (
@@ -473,7 +492,10 @@ export const UserManagementView: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{u.email}</div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                              <span>{u.email}</span>
+                              <UserRankBadge email={u.email} size="sm" showPoints={true} />
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -587,14 +609,46 @@ export const UserManagementView: React.FC = () => {
                           </button>
 
                           {!isFulvio && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => toggleUserStatus(u.uid)}
-                              style={{ fontSize: '0.76rem' }}
-                            >
-                              {u.status === 'ACTIVE' ? 'Desativar' : 'Reativar'}
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => toggleUserStatus(u.uid)}
+                                style={{ fontSize: '0.76rem' }}
+                                title={u.status === 'ACTIVE' ? 'Desativar temporariamente' : 'Reativar conta'}
+                              >
+                                {u.status === 'ACTIVE' ? 'Desativar' : 'Reativar'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setUserToDelete(u)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 10px',
+                                  borderRadius: 'var(--radius-sm)',
+                                  background: 'rgba(239, 68, 68, 0.12)',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  color: '#ef4444',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
+                                }}
+                                title="Apagar Perfil Definitivamente"
+                              >
+                                <Trash2 size={13} />
+                                <span>Apagar</span>
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -608,18 +662,25 @@ export const UserManagementView: React.FC = () => {
       </div>
 
       {/* Modal: Perfil do Usuário (Detalhado) */}
-      {selectedUserForProfile && (
+      {selectedUserForProfile && createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 105,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 99999,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px',
+            padding: '16px',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
           }}
           onClick={() => setSelectedUserForProfile(null)}
         >
@@ -627,10 +688,13 @@ export const UserManagementView: React.FC = () => {
             style={{
               width: '100%',
               maxWidth: '520px',
+              maxHeight: 'min(90vh, 660px)',
+              display: 'flex',
+              flexDirection: 'column',
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
               borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-lg)',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7), 0 0 25px rgba(92, 183, 128, 0.15)',
               overflow: 'hidden',
               animation: 'fadeIn 0.2s ease-out',
             }}
@@ -641,7 +705,8 @@ export const UserManagementView: React.FC = () => {
               style={{
                 height: '6px',
                 width: '100%',
-                background: selectedUserForProfile.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br'
+                flexShrink: 0,
+                background: isSuperAdminUser(selectedUserForProfile.email)
                   ? 'linear-gradient(90deg, #5cb780, #6c63ff, #f59e0b)'
                   : 'linear-gradient(90deg, #5cb780, #38bdf8)',
               }}
@@ -656,6 +721,7 @@ export const UserManagementView: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                flexShrink: 0,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -667,14 +733,15 @@ export const UserManagementView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedUserForProfile(null)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '4px' }}
+                title="Fechar"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Conteúdo do Perfil */}
-            <div style={{ padding: '24px' }}>
+            {/* Conteúdo do Perfil com Scroll Interno */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
               {/* Card com Avatar e Nome */}
               <div
                 style={{
@@ -685,7 +752,7 @@ export const UserManagementView: React.FC = () => {
                   background: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-md)',
-                  marginBottom: '20px',
+                  marginBottom: '18px',
                 }}
               >
                 <div
@@ -693,7 +760,7 @@ export const UserManagementView: React.FC = () => {
                     width: '56px',
                     height: '56px',
                     borderRadius: 'var(--radius-full)',
-                    background: selectedUserForProfile.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br'
+                    background: isSuperAdminUser(selectedUserForProfile.email)
                       ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
                       : 'linear-gradient(135deg, #38bdf8 0%, #5cb780 100%)',
                     color: '#ffffff',
@@ -719,7 +786,7 @@ export const UserManagementView: React.FC = () => {
               </div>
 
               {/* Grid de Informações Detalhadas */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '18px' }}>
                 {/* Cargo */}
                 <div style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
@@ -764,8 +831,13 @@ export const UserManagementView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Patente & Gamificação do Usuário */}
+              <div style={{ marginBottom: '18px' }}>
+                <UserRankBadge email={selectedUserForProfile.email} size="lg" showProgress={true} />
+              </div>
+
               {/* Informações de Login e Contribuições */}
-              <div style={{ padding: '14px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '20px', fontSize: '0.82rem' }}>
+              <div style={{ padding: '14px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '8px', fontSize: '0.82rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Clock size={14} />
@@ -788,35 +860,80 @@ export const UserManagementView: React.FC = () => {
                   </strong>
                 </div>
               </div>
+            </div>
 
-              {/* Ação de Fechar */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            {/* Barra de Ações Fixa no Rodapé do Modal */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 20px',
+                borderTop: '1px solid var(--border-subtle)',
+                background: 'var(--bg-sidebar)',
+                flexShrink: 0,
+              }}
+            >
+              {!isSuperAdminUser(selectedUserForProfile.email) ? (
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setSelectedUserForProfile(null)}
+                  onClick={() => {
+                    const target = selectedUserForProfile;
+                    setSelectedUserForProfile(null);
+                    setUserToDelete(target);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#ef4444',
+                    fontWeight: 600,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                  }}
                 >
-                  Fechar
+                  <Trash2 size={15} />
+                  <span>Apagar Perfil</span>
                 </button>
-              </div>
+              ) : <div />}
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSelectedUserForProfile(null)}
+              >
+                Fechar
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Adicionar Novo Colaborador ou Usuário */}
-      {isAddModalOpen && (
+      {isAddModalOpen && createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 100,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 99999,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px',
+            padding: '16px',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
           }}
           onClick={() => setIsAddModalOpen(false)}
         >
@@ -824,11 +941,15 @@ export const UserManagementView: React.FC = () => {
             style={{
               width: '100%',
               maxWidth: '480px',
+              maxHeight: 'min(90vh, 620px)',
+              display: 'flex',
+              flexDirection: 'column',
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
               borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-lg)',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
               overflow: 'hidden',
+              animation: 'fadeIn 0.2s ease-out',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -840,117 +961,125 @@ export const UserManagementView: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                flexShrink: 0,
               }}
             >
-              <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0 }}>
+              <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', margin: 0, fontWeight: 700 }}>
                 {activeTab === 'COLABORADORES' ? 'Cadastrar Colaborador do Conciliador' : 'Cadastrar Usuário Externo (Cliente)'}
               </h3>
-              <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ color: 'var(--text-subtle)' }}>
-                ✕
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '4px' }}
+                title="Fechar"
+              >
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleAddUserSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {errorMsg && (
-                <div
-                  style={{
-                    padding: '10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#ef4444',
-                    fontSize: '0.82rem',
-                  }}
-                >
-                  {errorMsg}
-                </div>
-              )}
-
-              {successMsg && (
-                <div
-                  style={{
-                    padding: '10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    color: '#10b981',
-                    fontSize: '0.82rem',
-                  }}
-                >
-                  {successMsg}
-                </div>
-              )}
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Nome Completo:
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: João da Silva"
-                  value={newDisplayName}
-                  onChange={(e) => setNewDisplayName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  {activeTab === 'COLABORADORES'
-                    ? 'E-mail Corporativo (@conciliadorcontabil.com.br):'
-                    : 'E-mail do Cliente / Usuário:'}
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder={
-                    activeTab === 'COLABORADORES'
-                      ? 'nome@conciliadorcontabil.com.br'
-                      : 'cliente@exemplo.com.br'
-                  }
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  color: 'var(--text-subtle)',
-                  background: 'var(--bg-card)',
-                  padding: '10px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                {activeTab === 'COLABORADORES' ? (
-                  <span>
-                    ℹ️ Novos colaboradores iniciam com o cargo de <strong>Operador</strong>. Você poderá promovê-los para Administrador ou Revisor diretamente na tabela.
-                  </span>
-                ) : (
-                  <span>
-                    ℹ️ Clientes externos ingressam como <strong>Leitores</strong>, com visualização restrita a manuais públicos/externos.
-                  </span>
+            <form onSubmit={handleAddUserSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', flex: 1 }}>
+                {errorMsg && (
+                  <div
+                    style={{
+                      padding: '10px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#ef4444',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    {errorMsg}
+                  </div>
                 )}
+
+                {successMsg && (
+                  <div
+                    style={{
+                      padding: '10px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      color: '#10b981',
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    {successMsg}
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Nome Completo:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: João da Silva"
+                    value={newDisplayName}
+                    onChange={(e) => setNewDisplayName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.85rem',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    {activeTab === 'COLABORADORES'
+                      ? 'E-mail Corporativo (@conciliadorcontabil.com.br):'
+                      : 'E-mail do Cliente / Usuário:'}
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder={
+                      activeTab === 'COLABORADORES'
+                        ? 'nome@conciliadorcontabil.com.br'
+                        : 'cliente@exemplo.com.br'
+                    }
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.85rem',
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-subtle)',
+                    background: 'var(--bg-card)',
+                    padding: '10px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  {activeTab === 'COLABORADORES' ? (
+                    <span>
+                      ℹ️ Novos colaboradores iniciam com o cargo de <strong>Operador</strong>. Você poderá promovê-los para Administrador ou Revisor diretamente na tabela.
+                    </span>
+                  ) : (
+                    <span>
+                      ℹ️ Clientes externos ingressam como <strong>Leitores</strong>, com visualização restrita a manuais públicos/externos.
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '14px 20px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-sidebar)', flexShrink: 0 }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -964,7 +1093,141 @@ export const UserManagementView: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal de Confirmação: Apagar Usuário Permanentemente */}
+      {userToDelete && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.82)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+          }}
+          onClick={() => !isDeleting && setUserToDelete(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              maxHeight: 'min(90vh, 560px)',
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-surface)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
+              overflow: 'hidden',
+              animation: 'fadeIn 0.2s ease-out',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ height: '4px', background: 'linear-gradient(90deg, #ef4444, #dc2626)', flexShrink: 0 }} />
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ef4444',
+                    flexShrink: 0,
+                  }}
+                >
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', color: 'var(--text-main)', margin: '0 0 4px 0', fontWeight: 800 }}>
+                    Apagar Perfil de Usuário
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+                    Ação irreversível de exclusão de dados
+                  </span>
+                </div>
+              </div>
+
+              <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                Você está prestes a <strong>excluir permanentemente</strong> o perfil de{' '}
+                <span style={{ color: 'var(--text-main)', fontWeight: 700 }}>{userToDelete.displayName}</span> (
+                <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: '4px' }}>{userToDelete.email}</code>).
+              </p>
+
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: '#f87171',
+                  fontSize: '0.82rem',
+                  marginBottom: '20px',
+                  lineHeight: 1.4,
+                }}
+              >
+                ⚠️ Este usuário será totalmente removido da base de dados e não conseguirá mais efetuar login no sistema.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isDeleting}
+                  onClick={() => setUserToDelete(null)}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    await deleteUser(userToDelete.uid, userToDelete.email);
+                    setIsDeleting(false);
+                    setUserToDelete(null);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '9px 18px',
+                    borderRadius: 'var(--radius-md)',
+                    background: '#ef4444',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  <span>{isDeleting ? 'Apagando...' : 'Sim, Apagar Perfil'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Wrench,
   Download,
@@ -18,6 +19,16 @@ export const ToolsHubView: React.FC = () => {
   const { tools, addTool, currentUser } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (isAddModalOpen) {
+      const original = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = original;
+      };
+    }
+  }, [isAddModalOpen]);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -205,18 +216,25 @@ export const ToolsHubView: React.FC = () => {
       </div>
 
       {/* Modal: Adicionar Ferramenta (Admin Fulvio) */}
-      {isAddModalOpen && (
+      {isAddModalOpen && createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 100,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 99999,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px',
+            padding: '16px',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
           }}
           onClick={() => setIsAddModalOpen(false)}
         >
@@ -224,11 +242,15 @@ export const ToolsHubView: React.FC = () => {
             style={{
               width: '100%',
               maxWidth: '520px',
+              maxHeight: 'min(90vh, 640px)',
+              display: 'flex',
+              flexDirection: 'column',
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
               borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-lg)',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
               overflow: 'hidden',
+              animation: 'fadeIn 0.2s ease-out',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -250,125 +272,18 @@ export const ToolsHubView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateTool} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Nome da Ferramenta:
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Robô SISPAG Itaú v2.0"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Descrição Curta:
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Instruções breves sobre para que serve e quando utilizar..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <form onSubmit={handleCreateTool} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', flex: 1 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Categoria:
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as ToolCategory)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <option value="SOFTWARES" style={{ background: '#1e2227' }}>Softwares & Executáveis (.exe)</option>
-                    <option value="CONVERSORES" style={{ background: '#1e2227' }}>Conversores OFX/PDF</option>
-                    <option value="LAYOUTS_ERP" style={{ background: '#1e2227' }}>Modelos & Layouts ERP</option>
-                    <option value="LINKS_OPERACIONAIS" style={{ background: '#1e2227' }}>Links Operacionais</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Tipo:
-                  </label>
-                  <select
-                    value={resourceType}
-                    onChange={(e) => setResourceType(e.target.value as 'DOWNLOAD_FILE' | 'EXTERNAL_URL')}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <option value="DOWNLOAD_FILE" style={{ background: '#1e2227' }}>Arquivo para Download</option>
-                    <option value="EXTERNAL_URL" style={{ background: '#1e2227' }}>Link Externo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  URL de Download ou Link Externo:
-                </label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://downloads.conciliadorcontabil.com.br/software.exe"
-                  value={targetUrl}
-                  onChange={(e) => setTargetUrl(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Tamanho (ex: 45 MB):
+                    Nome da Ferramenta:
                   </label>
                   <input
                     type="text"
-                    placeholder="45.2 MB"
-                    value={fileSize}
-                    onChange={(e) => setFileSize(e.target.value)}
+                    required
+                    placeholder="Ex: Robô SISPAG Itaú v2.0"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
@@ -382,13 +297,13 @@ export const ToolsHubView: React.FC = () => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Versão (ex: v2.1):
+                    Descrição Curta:
                   </label>
-                  <input
-                    type="text"
-                    placeholder="v2.1.0"
-                    value={versionTag}
-                    onChange={(e) => setVersionTag(e.target.value)}
+                  <textarea
+                    rows={2}
+                    placeholder="Instruções breves sobre para que serve e quando utilizar..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
@@ -399,9 +314,118 @@ export const ToolsHubView: React.FC = () => {
                     }}
                   />
                 </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Categoria:
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as ToolCategory)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <option value="SOFTWARES" style={{ background: '#1e2227' }}>Softwares & Executáveis (.exe)</option>
+                      <option value="CONVERSORES" style={{ background: '#1e2227' }}>Conversores OFX/PDF</option>
+                      <option value="LAYOUTS_ERP" style={{ background: '#1e2227' }}>Modelos & Layouts ERP</option>
+                      <option value="LINKS_OPERACIONAIS" style={{ background: '#1e2227' }}>Links Operacionais</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Tipo:
+                    </label>
+                    <select
+                      value={resourceType}
+                      onChange={(e) => setResourceType(e.target.value as 'DOWNLOAD_FILE' | 'EXTERNAL_URL')}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <option value="DOWNLOAD_FILE" style={{ background: '#1e2227' }}>Arquivo para Download</option>
+                      <option value="EXTERNAL_URL" style={{ background: '#1e2227' }}>Link Externo</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    URL de Download ou Link Externo:
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://downloads.conciliadorcontabil.com.br/software.exe"
+                    value={targetUrl}
+                    onChange={(e) => setTargetUrl(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.85rem',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Tamanho (ex: 45 MB):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="45.2 MB"
+                      value={fileSize}
+                      onChange={(e) => setFileSize(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Versão (ex: v2.1):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="v2.1.0"
+                      value={versionTag}
+                      onChange={(e) => setVersionTag(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '14px 20px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-sidebar)', flexShrink: 0 }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -415,7 +439,8 @@ export const ToolsHubView: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

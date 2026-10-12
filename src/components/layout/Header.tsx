@@ -8,6 +8,9 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isInternalUser, isExternalUser } from '../../services/authService';
+import { NotificationCenter } from '../notifications/NotificationCenter';
+import { UserRankBadge } from '../gamification/UserRankBadge';
 
 interface HeaderProps {
   activeView: string;
@@ -17,8 +20,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => {
   const {
     currentUser,
-    isPermanentSuperAdmin,
-    switchRolePreview,
     theme,
     toggleTheme,
     setIsSearchOpen,
@@ -27,10 +28,8 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
     setSelectedArticle,
   } = useApp();
 
-  const isCorporate = Boolean(currentUser?.email?.toLowerCase().endsWith('@conciliadorcontabil.com.br'));
-  const isExternal = currentUser?.role === 'READER' || currentUser?.userType === 'EXTERNAL' || !isCorporate;
-  const isInternal = !isExternal && isCorporate;
-  const isSuperAdmin = currentUser?.email?.toLowerCase() === 'fulvio@conciliadorcontabil.com.br' && isPermanentSuperAdmin;
+  const isInternal = isInternalUser(currentUser);
+  const isExternal = isExternalUser(currentUser);
 
   const handleGoHome = () => {
     setSelectedArticle(null);
@@ -84,105 +83,25 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
                 textTransform: 'uppercase',
               }}
             >
-              {currentUser ? (isInternal ? 'INTERNO' : 'CLIENTE') : 'INSTITUCIONAL'}
+              {currentUser ? (isInternal ? 'INTERNO' : 'LEITOR') : 'INSTITUCIONAL'}
             </span>
           </span>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Conciliador Contábil</span>
         </div>
       </div>
 
-      {/* Global Search Bar trigger - Apenas para Colaboradores Internos */}
-      {!isExternal && currentUser && activeView !== 'landing' ? (
-        <div style={{ flex: 1, maxWidth: '440px', margin: '0 24px' }}>
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 14px',
-              background: 'var(--bg-input)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-muted)',
-              fontSize: '0.85rem',
-              transition: 'all 0.2s ease',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--color-primary)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-subtle)';
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Search size={16} color="var(--color-primary)" />
-              <span>Buscar manuais, regras, layouts, erros...</span>
-            </div>
-            <kbd
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: '4px',
-                padding: '2px 6px',
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                color: 'var(--text-subtle)',
-              }}
-            >
-              Ctrl + K
-            </kbd>
-          </button>
-        </div>
-      ) : (
-        <div style={{ flex: 1 }} />
-      )}
+      {/* Espaçador central (Barra de pesquisa movida para baixo do título na Base de Conhecimento) */}
+      <div style={{ flex: 1 }} />
 
       {/* Actions & User State */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Super Admin Persistent Role Switcher - NUNCA SOME PARA O FULVIO */}
-        {isSuperAdmin && currentUser && (
-          <div
-            title="Simulador de Papel do Super Administrador (Fixo)"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 8px',
-              borderRadius: 'var(--radius-md)',
-              background: 'rgba(92, 183, 128, 0.12)',
-              border: '1px solid rgba(92, 183, 128, 0.35)',
-            }}
-          >
-            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-primary)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-              👑 Visão:
-            </span>
-            <select
-              value={currentUser.role}
-              onChange={(e) => switchRolePreview(e.target.value as any)}
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-sm)',
-                color: 'var(--text-main)',
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                padding: '3px 6px',
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-            >
-              <option value="SUPER_ADMIN">👑 Super Admin</option>
-              <option value="ADMIN">🛡️ Administrador</option>
-              <option value="REVIEWER">✍️ Revisor / Editor</option>
-              <option value="OPERATOR">👷 Operador</option>
-              <option value="READER">👤 Leitor (Cliente)</option>
-            </select>
-          </div>
+        {/* User Rank Badge (Patente & Pontos) */}
+        {currentUser && (
+          <UserRankBadge email={currentUser.email} size="sm" showPoints={true} />
         )}
+
+        {/* Central de Notificações no App & Histórico de E-mails */}
+        {currentUser && <NotificationCenter />}
 
         {/* Theme Toggle */}
         <button
@@ -271,7 +190,7 @@ export const Header: React.FC<HeaderProps> = ({ activeView, setActiveView }) => 
                   ? '🛡️ Administrador'
                   : currentUser.role === 'REVIEWER'
                   ? '✍️ Revisor'
-                  : isInternal
+                  : currentUser.role === 'OPERATOR'
                   ? '👷 Operador'
                   : '👤 Leitor / Cliente'}
               </span>

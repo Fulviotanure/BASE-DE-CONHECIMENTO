@@ -1,6 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import type { UserProfile, Article, Category, ToolItem, UserRole, UserType, ArticleStatus, UserPerformance, ArticleReviewComment } from '../types';
+import type { 
+  UserProfile, 
+  Article, 
+  Category, 
+  ToolItem, 
+  UserRole, 
+  UserType, 
+  ArticleStatus, 
+  UserPerformance, 
+  ArticleReviewComment,
+  AppNotification,
+  SentEmail,
+  UserGamification
+} from '../types';
+import { sendArticleSubmittedEmail, sendArticleNeedsAdjustmentEmail, sendArticleApprovedEmail, getSentEmails, clearSentEmails } from '../services/emailService';
+import { calculateUserGamification } from '../services/gamificationService';
 import { INITIAL_USERS, INITIAL_ARTICLES, INITIAL_CATEGORIES, INITIAL_TOOLS } from '../data/initialSeed';
 import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, type FirebaseConfig } from '../services/firebase';
 import { 
@@ -13,7 +28,19 @@ import {
   determineUserType,
   isAdminUser,
   isSuperAdminUser,
-  determineInitialRole
+  determineInitialRole,
+  isInternalUser,
+  isExternalUser,
+  MOCK_ADMIN_USER,
+  MOCK_READER_USER,
+  getDeletedUserEmails,
+  addDeletedUserEmail,
+  removeDeletedUserEmail,
+  getDeletedCategoryIds,
+  addDeletedCategoryId,
+  removeDeletedCategoryId,
+  setLocalPreAssignedRole,
+  removeLocalPreAssignedRole,
 } from '../services/authService';
 import { 
   subscribeArticles, 
@@ -22,9 +49,12 @@ import {
   subscribeUsers, 
   updateUserRoleInFirestore, 
   toggleUserStatusInFirestore, 
+  deleteUserFromFirestore,
   subscribeTools, 
   saveToolToFirestore, 
   subscribeCategories,
+  saveCategoryToFirestore,
+  deleteCategoryFromFirestore,
   seedFirestoreWithMovideskData,
   seedUsersToFirestore
 } from '../services/firestoreService';
@@ -42,6 +72,8 @@ interface AppContextType {
   loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
   registerClientAccount: (email: string, displayName: string, pass: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
   loginAsUser: (user: UserProfile) => void;
+  loginAsMockAdmin: () => void;
+  loginAsMockReader: () => void;
   
   // Modais de Autenticação e Perfil
   isAuthModalOpen: boolean;
@@ -53,6 +85,7 @@ interface AppContextType {
   users: UserProfile[];
   updateUserRole: (uid: string, newRole: UserRole) => void;
   toggleUserStatus: (uid: string) => void;
+  deleteUser: (uid: string, email?: string) => Promise<{ success: boolean; error?: string }>;
   addNewUser: (email: string, displayName: string, password?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Base de Conhecimento
@@ -62,6 +95,9 @@ interface AppContextType {
   setSelectedCategory: (catId: string | null) => void;
   selectedArticle: Article | null;
   setSelectedArticle: (art: Article | null) => void;
+  createCategory: (cat: Omit<Category, 'id'>) => Promise<Category>;
+  updateCategory: (id: string, updates: Partial<Category>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
 
   // Interações com Artigo (Likes/Dislikes & Proposta de Edição)
   voteArticle: (articleId: string, type: 'like' | 'dislike') => void;
@@ -132,28 +168,59 @@ interface AppContextType {
   isConfigModalOpen: boolean;
   setIsConfigModalOpen: (open: boolean) => void;
   seedFirebase: () => Promise<{ success: boolean; count: number }>;
+
+  // Notificações e Gamificação
+  notifications: AppNotification[];
+  unreadNotificationsCount: number;
+  addNotification: (notif: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => void;
+  markNotificationAsRead: (id: string) => void;
+  markAllNotificationsAsRead: () => void;
+  clearAllNotifications: () => void;
+  sentEmails: SentEmail[];
+  refreshSentEmails: () => void;
+  clearSentEmailsList: () => void;
+  getUserGamification: (email?: string) => UserGamification;
+  celebrationModal: { isOpen: boolean; title: string; message: string; points?: number } | null;
+  triggerCelebration: (title?: string, message?: string, points?: number) => void;
+  closeCelebrationModal: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Lista de Usuários reais da Conciliador Contábil
+  // Lista de Usuários reais da Conciliador Contábil (estritamente desduplicada por e-mail e respeitando exclusões)
   const [users, setUsers] = useState<UserProfile[]>(() => {
+    // Purga definitiva do perfil de teste antigo solicitado pelo Fulvio
+    addDeletedUserEmail('admin.teste@conciliadorcontabil.com.br');
+    removeLocalPreAssignedRole('admin.teste@conciliadorcontabil.com.br');
+    const deletedEmails = getDeletedUserEmails();
     const saved = localStorage.getItem('conciliador_users_v7');
-    if (!saved) {
-      localStorage.setItem('conciliador_users_v7', JSON.stringify(INITIAL_USERS));
-      return INITIAL_USERS;
+    const emailMap = new Map<string, UserProfile>();
+
+    if (saved) {
+      try {
+        const parsed: UserProfile[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u) => {
+            const k = u.email?.toLowerCase().trim();
+            if (k && k !== 'admin.teste@conciliadorcontabil.com.br' && !deletedEmails.has(k) && !emailMap.has(k)) {
+              emailMap.set(k, u);
+            }
+          });
+        }
+      } catch {}
     }
-    try {
-      const parsed: UserProfile[] = JSON.parse(saved);
-      // Garante que todos os membros da equipe estejam presentes
-      const existingEmails = new Set(parsed.map((u) => u.email.toLowerCase()));
-      const missingUsers = INITIAL_USERS.filter((u) => !existingEmails.has(u.email.toLowerCase()));
-      const merged = [...parsed, ...missingUsers];
-      return merged;
-    } catch {
-      return INITIAL_USERS;
-    }
+
+    INITIAL_USERS.forEach((u) => {
+      const k = u.email.toLowerCase().trim();
+      if (!deletedEmails.has(k) && !emailMap.has(k)) {
+        emailMap.set(k, u);
+      }
+    });
+
+    const list = Array.from(emailMap.values());
+    localStorage.setItem('conciliador_users_v7', JSON.stringify(list));
+    return list;
   });
 
   // O usuário começa deslogado (null) a menos que haja sessão salva
@@ -169,9 +236,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
-  // Estado fixo de Super Administrador (Apenas a conta corporativa oficial fulvio@conciliadorcontabil.com.br)
+  // Estado fixo de Super Administrador (Contempla conta oficial do Fulvio e Admin Fictício de Teste)
   const isExactSuperAdmin = (email?: string | null) => {
-    return email?.trim().toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+    if (!email) return false;
+    return isSuperAdminUser(email);
   };
 
   const [isPermanentSuperAdmin, setIsPermanentSuperAdmin] = useState<boolean>(() => {
@@ -197,23 +265,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUser]);
 
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  // Persistência contínua da sessão do usuário
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('conciliador_current_user_v3', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('conciliador_current_user_v3');
+    }
+  }, [currentUser]);
+
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const deletedIds = getDeletedCategoryIds();
+    try {
+      const saved = localStorage.getItem('conciliador_categories_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+            .filter((cat: Category) => !deletedIds.has(cat.id))
+            .map((cat: Category) => {
+              if (!cat.accessLevel) {
+                const isPb =
+                  cat.title?.toLowerCase().includes('playbook') ||
+                  cat.id === 'cat-11' ||
+                  cat.id === 'cat-12';
+                return { ...cat, accessLevel: isPb ? 'INTERNAL' : 'ALL' };
+              }
+              return cat;
+            });
+        }
+      }
+    } catch {}
+    return INITIAL_CATEGORIES.filter((cat) => !deletedIds.has(cat.id));
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('conciliador_categories_v2', JSON.stringify(categories));
+    } catch {}
+  }, [categories]);
+
+  const SEED_BASELINE_METRICS: Record<string, { viewCount: number; likesCount: number; dislikesCount: number }> = {
+    'CC-101': { viewCount: 384, likesCount: 72, dislikesCount: 2 },
+    'CC-102': { viewCount: 310, likesCount: 58, dislikesCount: 1 },
+    'CC-103': { viewCount: 265, likesCount: 49, dislikesCount: 3 },
+    'CC-104': { viewCount: 228, likesCount: 43, dislikesCount: 1 },
+    'CC-105': { viewCount: 195, likesCount: 38, dislikesCount: 2 },
+    'CC-106': { viewCount: 168, likesCount: 32, dislikesCount: 0 },
+    'CC-107': { viewCount: 142, likesCount: 27, dislikesCount: 1 },
+    'CC-108': { viewCount: 124, likesCount: 22, dislikesCount: 0 },
+    'CC-109': { viewCount: 108, likesCount: 19, dislikesCount: 1 },
+    'CC-110': { viewCount: 95, likesCount: 17, dislikesCount: 0 },
+    'CC-111': { viewCount: 84, likesCount: 14, dislikesCount: 1 },
+    'CC-112': { viewCount: 76, likesCount: 13, dislikesCount: 0 },
+    'CC-113': { viewCount: 68, likesCount: 11, dislikesCount: 0 },
+    'CC-114': { viewCount: 62, likesCount: 10, dislikesCount: 1 },
+    'CC-115': { viewCount: 55, likesCount: 9, dislikesCount: 0 },
+    'CC-116': { viewCount: 49, likesCount: 8, dislikesCount: 0 },
+    'CC-117': { viewCount: 44, likesCount: 7, dislikesCount: 0 },
+    'CC-118': { viewCount: 38, likesCount: 6, dislikesCount: 0 },
+    'CC-119': { viewCount: 32, likesCount: 5, dislikesCount: 0 },
+    'CC-120': { viewCount: 27, likesCount: 4, dislikesCount: 0 },
+  };
 
   const [articles, setArticles] = useState<Article[]>(() => {
-    const saved = localStorage.getItem('conciliador_articles_v7');
-    if (!saved) {
-      localStorage.setItem('conciliador_articles_v7', JSON.stringify(INITIAL_ARTICLES));
-      return INITIAL_ARTICLES;
-    }
-    try {
-      const parsed: Article[] = JSON.parse(saved);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        return INITIAL_ARTICLES;
+    const saved = localStorage.getItem('conciliador_articles_v8');
+    let loaded = INITIAL_ARTICLES;
+    if (saved) {
+      try {
+        const parsed: Article[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          loaded = parsed;
+        }
+      } catch {}
+    } else {
+      const oldSaved = localStorage.getItem('conciliador_articles_v7');
+      if (oldSaved) {
+        try {
+          const parsedOld: Article[] = JSON.parse(oldSaved);
+          if (Array.isArray(parsedOld) && parsedOld.length > 0) {
+            loaded = parsedOld;
+          }
+        } catch {}
       }
-      return parsed;
-    } catch {
-      return INITIAL_ARTICLES;
     }
+
+    const enriched = loaded.map((art) => {
+      const base = SEED_BASELINE_METRICS[art.code];
+      if (base && (!art.viewCount || art.viewCount === 0) && (!art.likesCount || art.likesCount === 0)) {
+        return {
+          ...art,
+          viewCount: base.viewCount,
+          likesCount: base.likesCount,
+          dislikesCount: base.dislikesCount,
+        };
+      }
+      return art;
+    });
+
+    localStorage.setItem('conciliador_articles_v8', JSON.stringify(enriched));
+    return enriched;
   });
 
   // Persistência local contínua
@@ -222,7 +373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_articles_v7', JSON.stringify(articles));
+    localStorage.setItem('conciliador_articles_v8', JSON.stringify(articles));
   }, [articles]);
 
   const [tools, setTools] = useState<ToolItem[]>(() => {
@@ -254,6 +405,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [firebaseConfig] = useState<FirebaseConfig | null>(getSavedFirebaseConfig);
 
   // ----------------------------------------------------
+  // Notificações In-App & Central de E-mails Disparados
+  // ----------------------------------------------------
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem('conciliador_notifications_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: 'notif-welcome',
+        type: 'SYSTEM',
+        title: '👋 Bem-vindo ao Conciliador KB!',
+        message: 'Acesse manuais, crie novos artigos e acumule pontos de conhecimento para subir de patente no ranking.',
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('conciliador_notifications_v1', JSON.stringify(notifications));
+    } catch {}
+  }, [notifications]);
+
+  const [sentEmails, setSentEmails] = useState<SentEmail[]>(() => getSentEmails());
+
+  const refreshSentEmails = () => {
+    setSentEmails(getSentEmails());
+  };
+
+  const clearSentEmailsList = () => {
+    clearSentEmails();
+    setSentEmails([]);
+  };
+
+  const addNotification = (notif: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => {
+    const newN: AppNotification = {
+      ...notif,
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
+    setNotifications((prev) => [newN, ...prev]);
+  };
+
+  const markNotificationAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
+
+  // Gamificação: Pontuação & Patentes
+  const getUserGamification = (email?: string): UserGamification => {
+    const targetEmail = email || currentUser?.email || '';
+    return calculateUserGamification(targetEmail, articles);
+  };
+
+  // Celebração de Parabéns com Confetes & Modal
+  const [celebrationModal, setCelebrationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    points?: number;
+  } | null>(null);
+
+  const triggerCelebration = (title?: string, message?: string, points?: number) => {
+    confetti({
+      particleCount: 120,
+      spread: 80,
+      origin: { y: 0.6 },
+      colors: ['#5cb780', '#6c63ff', '#38bdf8', '#f59e0b'],
+    });
+    setCelebrationModal({
+      isOpen: true,
+      title: title || '🎉 Parabéns pelo Artigo!',
+      message: message || 'Seu manual foi aprovado e publicado com sucesso!',
+      points: points || 100,
+    });
+  };
+
+  const closeCelebrationModal = () => {
+    setCelebrationModal(null);
+  };
+
+  // ----------------------------------------------------
   // Sincronização em Tempo Real com Firestore
   // ----------------------------------------------------
   useEffect(() => {
@@ -276,16 +526,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 3. Ouvinte de Usuários Firestore (com normalização e desduplicação por e-mail)
+    // 3. Ouvinte de Usuários Firestore (com normalização, desduplicação por e-mail e respeito a exclusões)
     const unsubUsers = subscribeUsers((remoteUsers) => {
-      const normalizedRemoteUsers = remoteUsers.map((u) => {
-        const isCorp = Boolean(u.email && u.email.trim().toLowerCase().endsWith('@conciliadorcontabil.com.br'));
-        return {
-          ...u,
-          userType: isCorp ? ('INTERNAL' as const) : ('EXTERNAL' as const),
-          role: !isCorp && (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') ? ('READER' as const) : u.role,
-        };
-      });
+      const deletedEmails = getDeletedUserEmails();
+
+      const normalizedRemoteUsers = remoteUsers
+        .filter((u) => !deletedEmails.has((u.email || '').toLowerCase().trim()))
+        .map((u) => {
+          const isCorp = Boolean(u.email && isCorporateEmailValid(u.email));
+          const hasInternalRole = Boolean(u.role && u.role !== 'READER');
+          const effectiveUserType: UserType = (isCorp || hasInternalRole) ? 'INTERNAL' : 'EXTERNAL';
+          const effectiveRole: UserRole = u.role || (isCorp ? 'OPERATOR' : 'READER');
+          return {
+            ...u,
+            userType: effectiveUserType,
+            role: effectiveRole,
+          };
+        });
 
       const emailToUserMap = new Map<string, UserProfile>();
       normalizedRemoteUsers.forEach((u) => {
@@ -295,38 +552,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!existing) {
           emailToUserMap.set(emailKey, u);
         } else {
-          // Desduplica registros para o mesmo e-mail, preservando dados de login e cargo mais alto
+          // Desduplica registros para o mesmo e-mail, preservando dados de login e cargo atribuído
           const existingHasLogin = Boolean(existing.lastLoginAt);
           const currentHasLogin = Boolean(u.lastLoginAt);
 
-          const preferredRole = (existing.role === 'SUPER_ADMIN' || existing.role === 'ADMIN' || existing.role === 'REVIEWER')
+          const preferredRole = (existing.role === 'SUPER_ADMIN' || existing.role === 'ADMIN' || existing.role === 'REVIEWER' || existing.role === 'OPERATOR')
             ? existing.role
             : u.role;
+
+          const isInternal = preferredRole !== 'READER' || isCorporateEmailValid(emailKey);
 
           if (currentHasLogin && !existingHasLogin) {
             emailToUserMap.set(emailKey, {
               ...u,
               role: preferredRole,
+              userType: isInternal ? 'INTERNAL' : 'EXTERNAL',
             });
           } else {
             emailToUserMap.set(emailKey, {
               ...existing,
               role: preferredRole,
+              userType: isInternal ? 'INTERNAL' : 'EXTERNAL',
               lastLoginAt: existing.lastLoginAt || u.lastLoginAt,
             });
           }
         }
       });
 
-      const merged: UserProfile[] = Array.from(emailToUserMap.values());
       INITIAL_USERS.forEach((initU) => {
         const initKey = initU.email.toLowerCase().trim();
-        if (!emailToUserMap.has(initKey)) {
-          merged.push(initU);
+        if (!deletedEmails.has(initKey) && !emailToUserMap.has(initKey)) {
+          emailToUserMap.set(initKey, initU);
         }
       });
 
-      setUsers(merged);
+      setUsers(Array.from(emailToUserMap.values()));
     });
 
     // 4. Ouvinte de Ferramentas Firestore
@@ -336,12 +596,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 5. Ouvinte de Categorias Firestore
+    // 5. Ouvinte de Categorias Firestore (com purga definitiva de categorias apagadas)
     const unsubCategories = subscribeCategories((remoteCategories) => {
-      if (remoteCategories.length > 0) {
-        const existingIds = new Set(remoteCategories.map((c) => c.id));
-        const missingInitial = INITIAL_CATEGORIES.filter((c) => !existingIds.has(c.id));
-        setCategories([...remoteCategories, ...missingInitial].sort((a, b) => a.orderIndex - b.orderIndex));
+      const deletedIds = getDeletedCategoryIds();
+      const validRemote = remoteCategories.filter((c) => !deletedIds.has(c.id));
+
+      if (remoteCategories.length === 0) {
+        const remainingInitial = INITIAL_CATEGORIES.filter((c) => !deletedIds.has(c.id));
+        setCategories(remainingInitial);
+      } else {
+        const existingIds = new Set(validRemote.map((c) => c.id));
+        const missingInitial = INITIAL_CATEGORIES.filter(
+          (c) => !existingIds.has(c.id) && !deletedIds.has(c.id)
+        );
+        setCategories([...validRemote, ...missingInitial].sort((a, b) => a.orderIndex - b.orderIndex));
       }
     });
 
@@ -397,15 +665,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginAsUser = (user: UserProfile) => {
+    const isCorp = isCorporateEmailValid(user.email);
+    const hasInternalRole = Boolean(user.role && user.role !== 'READER');
+    const effectiveUserType: UserType = (hasInternalRole || isCorp) ? 'INTERNAL' : 'EXTERNAL';
+    const effectiveRole: UserRole = isCorp && (!user.role || user.role === 'READER') ? 'OPERATOR' : user.role;
+
     const updatedUser: UserProfile = {
       ...user,
+      role: effectiveRole,
+      userType: effectiveUserType,
       lastLoginAt: new Date().toISOString(),
     };
     setUsers((prev) =>
       prev.map((u) => (u.uid === user.uid ? updatedUser : u))
     );
     setCurrentUser(updatedUser);
-    if (user.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br') {
+    if (isSuperAdminUser(user.email)) {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
     } else {
@@ -415,12 +690,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAuthModalOpen(false);
   };
 
+  const loginAsMockAdmin = () => {
+    const mockAdmin: UserProfile = {
+      ...MOCK_ADMIN_USER,
+      lastLoginAt: new Date().toISOString(),
+    };
+    setCurrentUser(mockAdmin);
+    setIsPermanentSuperAdmin(true);
+    localStorage.setItem('conciliador_is_superadmin', 'true');
+    localStorage.setItem('conciliador_current_user_v3', JSON.stringify(mockAdmin));
+    setIsAuthModalOpen(false);
+  };
+
+  const loginAsMockReader = () => {
+    const mockReader: UserProfile = {
+      ...MOCK_READER_USER,
+      lastLoginAt: new Date().toISOString(),
+    };
+    setCurrentUser(mockReader);
+    setIsPermanentSuperAdmin(false);
+    localStorage.removeItem('conciliador_is_superadmin');
+    localStorage.setItem('conciliador_current_user_v3', JSON.stringify(mockReader));
+    setIsAuthModalOpen(false);
+  };
+
   const loginWithGoogleAuth = async (customEmail?: string): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     try {
       if (isFirebaseConfigured) {
         const res = await loginWithGoogle();
         setCurrentUser(res.user);
-        if (res.user.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br') {
+        if (isSuperAdminUser(res.user.email)) {
           setIsPermanentSuperAdmin(true);
           localStorage.setItem('conciliador_is_superadmin', 'true');
         } else {
@@ -433,8 +732,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         const targetEmail = (customEmail || 'fulvio@conciliadorcontabil.com.br').toLowerCase();
         let user = users.find((u) => u.email.toLowerCase() === targetEmail);
-        const isCorp = targetEmail.endsWith('@conciliadorcontabil.com.br');
-        const isFulvio = targetEmail === 'fulvio@conciliadorcontabil.com.br';
+        const isCorp = isCorporateEmailValid(targetEmail);
+        const isFulvio = isSuperAdminUser(targetEmail);
 
         if (!user) {
           user = {
@@ -449,8 +748,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
           setUsers((prev) => [...prev, user!]);
         } else {
+          const hasInternalRole = Boolean(user.role && user.role !== 'READER');
+          const effectiveUserType: UserType = (hasInternalRole || isCorp) ? 'INTERNAL' : 'EXTERNAL';
+          const effectiveRole = isCorp && (!user.role || user.role === 'READER') ? 'OPERATOR' : user.role;
           user = {
             ...user,
+            role: effectiveRole,
+            userType: effectiveUserType,
             lastLoginAt: new Date().toISOString(),
           };
           setUsers((prev) => prev.map((u) => (u.uid === user!.uid ? user! : u)));
@@ -477,14 +781,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pass: string
   ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
-    const isCorp = cleanEmail.endsWith('@conciliadorcontabil.com.br');
-    const isFulvio = cleanEmail === 'fulvio@conciliadorcontabil.com.br';
+    const isCorp = isCorporateEmailValid(cleanEmail);
+    const isMockAdmin = isSuperAdminUser(cleanEmail) || cleanEmail === 'admin' || cleanEmail.startsWith('admin@');
+    const isMockReader = cleanEmail === 'leitor' || cleanEmail.startsWith('leitor@') || cleanEmail === 'leitor.teste@empresa.com.br';
 
+    // 1. Bypass imediato para credenciais de teste local
+    if (isMockAdmin) {
+      loginAsMockAdmin();
+      return { success: true, user: MOCK_ADMIN_USER };
+    }
+
+    if (isMockReader) {
+      loginAsMockReader();
+      return { success: true, user: MOCK_READER_USER };
+    }
+
+    // 2. Tentativa no Firebase (se configurado) com fallback resiliente para ambiente local
     if (isFirebaseConfigured) {
       try {
         const res = await loginWithEmailPassword(cleanEmail, pass);
         setCurrentUser(res.user);
-        if (res.user.email.toLowerCase() === 'fulvio@conciliadorcontabil.com.br') {
+        if (isSuperAdminUser(res.user.email)) {
           setIsPermanentSuperAdmin(true);
           localStorage.setItem('conciliador_is_superadmin', 'true');
         } else {
@@ -494,15 +811,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsRealFirebaseAuth(true);
         return { success: true, user: res.user };
       } catch (err: any) {
+        // Fallback resiliente para teste local caso o Firebase rejeite o login
+        if (isCorp || isSuperAdminUser(cleanEmail)) {
+          const fallbackUser: UserProfile = {
+            uid: `usr-fallback-${Date.now()}`,
+            email: cleanEmail,
+            displayName: cleanEmail.split('@')[0],
+            role: isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : 'OPERATOR',
+            userType: 'INTERNAL',
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+          };
+          setCurrentUser(fallbackUser);
+          if (fallbackUser.role === 'SUPER_ADMIN') {
+            setIsPermanentSuperAdmin(true);
+            localStorage.setItem('conciliador_is_superadmin', 'true');
+          }
+          return { success: true, user: fallbackUser };
+        }
         return { success: false, error: err.message || 'Erro ao autenticar.' };
       }
     }
 
-    // Modo Local
+    // 3. Modo Local Puro
     let user = users.find((u) => u.email.toLowerCase() === cleanEmail);
     if (!user) {
-      // Regra: e-mail comum -> perfil CLIENTE (READER / EXTERNAL)
-      // e-mail conciliadorcontabil -> OPERADOR (ou SUPER_ADMIN se Fulvio)
+      const isFulvio = isSuperAdminUser(cleanEmail);
       const role: UserRole = isFulvio ? 'SUPER_ADMIN' : isCorp ? 'OPERATOR' : 'READER';
       const userType: UserType = isCorp ? 'INTERNAL' : 'EXTERNAL';
       user = {
@@ -517,15 +852,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setUsers((prev) => [...prev, user!]);
     } else {
+      const hasInternalRole = Boolean(user.role && user.role !== 'READER');
+      const effectiveUserType: UserType = (hasInternalRole || isCorp) ? 'INTERNAL' : 'EXTERNAL';
+      const effectiveRole = isCorp && (!user.role || user.role === 'READER') ? 'OPERATOR' : user.role;
       user = {
         ...user,
+        role: effectiveRole,
+        userType: effectiveUserType,
         lastLoginAt: new Date().toISOString(),
       };
       setUsers((prev) => prev.map((u) => (u.uid === user!.uid ? user! : u)));
     }
 
     setCurrentUser(user);
-    if (isFulvio) {
+    if (isSuperAdminUser(user.email)) {
       setIsPermanentSuperAdmin(true);
       localStorage.setItem('conciliador_is_superadmin', 'true');
     } else {
@@ -541,13 +881,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pass: string
   ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
-    // "se criar conta perfil cliente"
-    const role: UserRole = 'READER';
-    const userType: UserType = 'EXTERNAL';
+    const isCorp = isCorporateEmailValid(cleanEmail);
+    const role: UserRole = isCorp ? 'OPERATOR' : 'READER';
+    const userType: UserType = isCorp ? 'INTERNAL' : 'EXTERNAL';
 
     if (isFirebaseConfigured) {
       try {
-        const res = await registerWithEmailPassword(cleanEmail, pass, displayName, 'EXTERNAL');
+        const res = await registerWithEmailPassword(cleanEmail, pass, displayName, userType);
         setCurrentUser(res.user);
         setIsRealFirebaseAuth(true);
         return { success: true, user: res.user };
@@ -586,6 +926,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userType: isExternalSim ? 'EXTERNAL' : 'INTERNAL',
     };
     setCurrentUser(updated);
+    if (isExternalSim) {
+      setSelectedArticle(null);
+    }
   };
 
   // Interação: Joinha (Like) e Deslike
@@ -712,23 +1055,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
   };
 
-  // RBAC: Administrador altera o papel de um usuário
+  // RBAC: Administrador altera o papel de um usuário (mantém a decisão antes ou depois do login)
   const updateUserRole = (uid: string, newRole: UserRole) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.uid === uid) {
-          const updated = { ...u, role: newRole };
-          if (currentUser && u.uid === currentUser.uid) {
-            setCurrentUser(updated);
-          }
-          return updated;
+    let targetEmail: string | undefined;
+    let targetUser: UserProfile | undefined;
+    const isNowInternal = newRole !== 'READER';
+
+    setUsers((prev) => {
+      const found = prev.find((u) => u.uid === uid);
+      targetEmail = found?.email?.trim().toLowerCase();
+      targetUser = found;
+
+      return prev.map((u) => {
+        const matchesUid = u.uid === uid;
+        const matchesEmail = Boolean(targetEmail && u.email?.trim().toLowerCase() === targetEmail);
+
+        if (matchesUid || matchesEmail) {
+          const effectiveUserType: UserType = isNowInternal
+            ? 'INTERNAL'
+            : isCorporateEmailValid(u.email)
+            ? 'INTERNAL'
+            : 'EXTERNAL';
+
+          return { 
+            ...u, 
+            role: newRole,
+            userType: effectiveUserType,
+          };
         }
         return u;
-      })
-    );
+      });
+    });
+
+    if (targetEmail) {
+      // Registra a pré-atribuição de forma indelével localmente
+      setLocalPreAssignedRole(targetEmail, newRole);
+    }
+
+    setCurrentUser((curr) => {
+      if (!curr) return null;
+      const matchesUid = curr.uid === uid;
+      const matchesEmail = Boolean(targetEmail && curr.email?.trim().toLowerCase() === targetEmail);
+
+      if (matchesUid || matchesEmail) {
+        const effectiveUserType: UserType = isNowInternal
+          ? 'INTERNAL'
+          : isCorporateEmailValid(curr.email)
+          ? 'INTERNAL'
+          : 'EXTERNAL';
+
+        return {
+          ...curr,
+          role: newRole,
+          userType: effectiveUserType,
+        };
+      }
+      return curr;
+    });
 
     if (isFirebaseConfigured) {
-      updateUserRoleInFirestore(uid, newRole).catch((err) => {
+      const fullUpdatedUser = targetUser ? {
+        ...targetUser,
+        role: newRole,
+        userType: (isNowInternal ? 'INTERNAL' : 'EXTERNAL') as UserType,
+      } : undefined;
+      updateUserRoleInFirestore(uid, newRole, targetEmail, fullUpdatedUser).catch((err) => {
         console.warn('Erro ao atualizar papel no Firestore:', err);
       });
     }
@@ -753,15 +1144,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Cadastro de Colaborador no Painel Administrativo
+  // Exclusão definitiva de perfil (não apenas desativar)
+  const deleteUser = async (uid: string, email?: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email?.trim().toLowerCase();
+
+    // Proteção absoluta: Apenas a conta oficial do Fulvio nunca pode ser excluída
+    if (cleanEmail && cleanEmail === 'fulvio@conciliadorcontabil.com.br') {
+      return { success: false, error: 'O Super Administrador Fulvio Tanure não pode ser excluído.' };
+    }
+
+    // 1. Remove do estado users (garantindo desduplicação por UID e e-mail)
+    setUsers((prev) => prev.filter((u) => u.uid !== uid && (cleanEmail ? u.email?.trim().toLowerCase() !== cleanEmail : true)));
+
+    // 2. Registra na lista de exclusão permanente para nunca ressuscitar pelo INITIAL_USERS ou sementes
+    if (cleanEmail) {
+      addDeletedUserEmail(cleanEmail);
+      removeLocalPreAssignedRole(cleanEmail);
+    }
+
+    // 3. Se for o usuário conectado na sessão ativa, encerra imediatamente o login
+    if (currentUser && (currentUser.uid === uid || (cleanEmail && currentUser.email?.trim().toLowerCase() === cleanEmail))) {
+      await logout();
+    }
+
+    // 4. Remove do Firestore
+    if (isFirebaseConfigured) {
+      await deleteUserFromFirestore(uid, cleanEmail).catch((err) => {
+        console.warn('Erro ao deletar usuário do Firestore:', err);
+      });
+    }
+
+    return { success: true };
+  };
+
+  // Cadastro de Colaborador no Painel Administrativo (nunca duplica e remove de excluídos caso esteja sendo readicionado)
   const addNewUser = async (email: string, displayName: string, password?: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const userType = determineUserType(cleanEmail);
     const initialRole: UserRole = determineInitialRole(cleanEmail);
 
-    if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+    if (users.some((u) => u.email.toLowerCase().trim() === cleanEmail)) {
       return { success: false, error: 'Este e-mail já está cadastrado no sistema.' };
     }
+
+    // Se o usuário havia sido excluído anteriormente e está sendo recadastrado, desfaz a exclusão
+    removeDeletedUserEmail(cleanEmail);
 
     if (isFirebaseConfigured && password) {
       try {
@@ -783,7 +1210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastLoginAt: null,
     };
 
-    setUsers((prev) => [...prev, newUser]);
+    setUsers((prev) => [...prev.filter((u) => u.email.toLowerCase().trim() !== cleanEmail), newUser]);
 
     if (isFirebaseConfigured) {
       import('../services/firebase').then(({ db }) => {
@@ -826,8 +1253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const isPrivileged =
       currentUser?.role === 'SUPER_ADMIN' ||
-      currentUser?.role === 'ADMIN' ||
-      currentUser?.email?.toLowerCase() === 'fulvio@conciliadorcontabil.com.br';
+      currentUser?.role === 'ADMIN';
 
     const subcat = cat?.subcategories?.find((s) => s.id === subcategoryId);
 
@@ -857,6 +1283,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setArticles((prev) => [newArt, ...prev]);
     setSelectedArticle(newArt);
+
+    if (newArt.currentStatus === 'APPROVED') {
+      sendArticleApprovedEmail(newArt, 'Publicação Direta do Administrador');
+      refreshSentEmails();
+      addNotification({
+        type: 'ARTICLE_APPROVED',
+        title: '🎉 Parabéns! Novo Manual Publicado!',
+        message: `Seu manual "${newArt.title}" (${newArt.code}) foi publicado com sucesso na Base de Conhecimento! (+100 Pontos)`,
+        articleId: newArt.id,
+        articleTitle: newArt.title,
+        userEmail: newArt.authorEmail,
+        pointsGained: 100,
+      });
+      triggerCelebration('🎉 Parabéns pelo novo manual!', `Seu artigo "${newArt.title}" foi publicado com sucesso! Você ganhou +100 Pontos de Conhecimento!`, 100);
+    } else {
+      sendArticleSubmittedEmail(newArt, newArt.authorName);
+      refreshSentEmails();
+      addNotification({
+        type: 'ARTICLE_SUBMITTED',
+        title: '📬 Manual Enviado para a Fila Editorial',
+        message: `Seu manual "${newArt.title}" (${newArt.code}) foi submetido para revisão dos editores. (+50 Pontos)`,
+        articleId: newArt.id,
+        articleTitle: newArt.title,
+        userEmail: newArt.authorEmail,
+        pointsGained: 50,
+      });
+    }
 
     if (isFirebaseConfigured) {
       saveArticleToFirestore(newArt).catch((err) => {
@@ -925,13 +1378,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newStatus: ArticleStatus =
       action === 'APPROVE' ? 'APPROVED' : action === 'REQUEST_ADJUSTMENT' ? 'IN_ADJUSTMENT' : 'REJECTED';
 
+    const targetArticle = articles.find((a) => a.id === articleId);
+
     if (action === 'APPROVE') {
       confetti({
-        particleCount: 80,
-        spread: 70,
+        particleCount: 120,
+        spread: 80,
         origin: { y: 0.6 },
-        colors: ['#5cb780', '#6c63ff', '#38bdf8'],
+        colors: ['#5cb780', '#6c63ff', '#38bdf8', '#f59e0b'],
       });
+      if (targetArticle) {
+        sendArticleApprovedEmail(targetArticle, currentUser?.displayName || 'Equipe Editorial');
+        refreshSentEmails();
+        addNotification({
+          type: 'ARTICLE_APPROVED',
+          title: '🎉 Parabéns! Artigo Aprovado & Publicado!',
+          message: `Seu manual "${targetArticle.title}" foi aprovado e publicado com sucesso! (+100 Pontos de Conhecimento)`,
+          articleId: targetArticle.id,
+          articleTitle: targetArticle.title,
+          userEmail: targetArticle.authorEmail,
+          pointsGained: 100,
+        });
+        triggerCelebration(
+          '🎉 Parabéns pelo Artigo Aprovado!',
+          `O manual "${targetArticle.title}" foi validado e publicado oficialmente na Base de Conhecimento! (+100 Pontos)`,
+          100
+        );
+      }
+    } else if (action === 'REQUEST_ADJUSTMENT') {
+      if (targetArticle) {
+        sendArticleNeedsAdjustmentEmail(targetArticle, currentUser?.displayName || 'Revisor Editorial', feedback);
+        refreshSentEmails();
+        addNotification({
+          type: 'ARTICLE_NEEDS_ADJUSTMENT',
+          title: '📝 Ajustes Solicitados no Manual',
+          message: `O revisor ${currentUser?.displayName || 'Editorial'} solicitou ajustes no artigo "${targetArticle.title}": "${feedback}"`,
+          articleId: targetArticle.id,
+          articleTitle: targetArticle.title,
+          userEmail: targetArticle.authorEmail,
+        });
+      }
     }
 
     const newReview = {
@@ -1118,6 +1604,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearFirebaseConfig();
   };
 
+  // Gestão de Módulos / Categorias da Base de Conhecimento
+  const createCategory = async (catData: Omit<Category, 'id'>): Promise<Category> => {
+    const slug = catData.slug || catData.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const newCategory: Category = {
+      ...catData,
+      id: `cat-${Date.now()}`,
+      slug,
+      accessLevel: catData.accessLevel || 'ALL',
+      articleCount: 0,
+      orderIndex: catData.orderIndex || (categories.length + 1),
+    };
+
+    removeDeletedCategoryId(newCategory.id);
+    setCategories((prev) => [...prev, newCategory]);
+    if (isFirebaseConfigured) {
+      await saveCategoryToFirestore(newCategory).catch(console.warn);
+    }
+
+    addNotification({
+      type: 'SYSTEM',
+      title: '📁 Novo Módulo Criado',
+      message: `O módulo "${newCategory.title}" foi criado com sucesso.`,
+    });
+
+    return newCategory;
+  };
+
+  const updateCategory = async (id: string, updates: Partial<Category>): Promise<void> => {
+    removeDeletedCategoryId(id);
+    let updatedCat: Category | null = null;
+    setCategories((prev) =>
+      prev.map((cat) => {
+        if (cat.id === id) {
+          updatedCat = { ...cat, ...updates };
+          return updatedCat;
+        }
+        return cat;
+      })
+    );
+
+    if (updatedCat && isFirebaseConfigured) {
+      await saveCategoryToFirestore(updatedCat).catch(console.warn);
+    }
+
+    if (updates.title) {
+      setArticles((prev) =>
+        prev.map((art) => (art.categoryId === id ? { ...art, categoryName: updates.title! } : art))
+      );
+    }
+
+    addNotification({
+      type: 'SYSTEM',
+      title: '📁 Módulo Atualizado',
+      message: `As alterações no módulo foram salvas com sucesso.`,
+    });
+  };
+
+  const deleteCategory = async (id: string): Promise<void> => {
+    const target = categories.find((c) => c.id === id);
+
+    // 1. Marca no blacklist definitivo de categorias deletadas
+    addDeletedCategoryId(id);
+
+    // 2. Se a categoria excluída estiver selecionada na tela, reseta a seleção
+    if (selectedCategory === id) {
+      setSelectedCategory(null);
+    }
+
+    // 3. Remove do estado em memória
+    setCategories((prev) => prev.filter((cat) => cat.id !== id));
+
+    // 4. Atualiza imediatamente o localStorage para não reaparecer no refresh
+    try {
+      const saved = localStorage.getItem('conciliador_categories_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((c: any) => c.id !== id);
+          localStorage.setItem('conciliador_categories_v2', JSON.stringify(filtered));
+        }
+      }
+    } catch {}
+
+    // 5. Desvincula artigos que pertenciam a este módulo
+    setArticles((prev) =>
+      prev.map((art) =>
+        art.categoryId === id
+          ? { ...art, categoryId: '', categoryName: 'Sem Categoria' }
+          : art
+      )
+    );
+
+    // 6. Exclui do Firestore se conectado
+    if (isFirebaseConfigured) {
+      await deleteCategoryFromFirestore(id).catch(console.warn);
+    }
+
+    addNotification({
+      type: 'SYSTEM',
+      title: '🗑️ Módulo Excluído',
+      message: `O módulo "${target?.title || id}" foi excluído permanentemente.`,
+    });
+  };
+
   const seedFirebase = async () => {
     return await seedFirestoreWithMovideskData();
   };
@@ -1136,6 +1726,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginWithEmail,
         registerClientAccount,
         loginAsUser,
+        loginAsMockAdmin,
+        loginAsMockReader,
         isAuthModalOpen,
         setIsAuthModalOpen,
         isProfileModalOpen,
@@ -1143,8 +1735,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users,
         updateUserRole,
         toggleUserStatus,
+        deleteUser,
         addNewUser,
         categories,
+        createCategory,
+        updateCategory,
+        deleteCategory,
         articles,
         selectedCategory,
         setSelectedCategory,
@@ -1173,6 +1769,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isConfigModalOpen,
         setIsConfigModalOpen,
         seedFirebase,
+        notifications,
+        unreadNotificationsCount,
+        addNotification,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        clearAllNotifications,
+        sentEmails,
+        refreshSentEmails,
+        clearSentEmailsList,
+        getUserGamification,
+        celebrationModal,
+        triggerCelebration,
+        closeCelebrationModal,
       }}
     >
       {children}

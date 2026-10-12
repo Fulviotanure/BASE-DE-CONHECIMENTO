@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, X, BookOpen, Wrench, ArrowRight, CornerDownLeft } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { isExternalUser } from '../../services/authService';
 import type { Article, ToolItem } from '../../types';
 
 interface SearchSpotlightModalProps {
@@ -19,9 +20,9 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsSearchOpen(true);
+        setIsSearchOpen(!isSearchOpen);
       }
-      if (e.key === 'Escape' && isSearchOpen) {
+      if (e.key === 'Escape') {
         setIsSearchOpen(false);
       }
     };
@@ -32,10 +33,31 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
   if (!isSearchOpen) return null;
 
   const normalized = query.toLowerCase().trim();
-  const isExternal = !currentUser || currentUser.userType === 'EXTERNAL' || currentUser.role === 'READER';
-  const availableArticles = articles.filter(
-    (a) => a.currentStatus === 'APPROVED' && (!isExternal || (a.accessLevel === 'ALL' || a.accessLevel === 'EXTERNAL'))
-  );
+  const isExternal = isExternalUser(currentUser);
+  const availableArticles = articles.filter((a) => {
+    if (a.currentStatus !== 'APPROVED') return false;
+    if (isExternal) {
+      if (a.accessLevel === 'INTERNAL') return false;
+      const parentCat = categories.find((c) => c.id === a.categoryId);
+      if (
+        parentCat &&
+        (parentCat.accessLevel === 'INTERNAL' ||
+          parentCat.title?.toLowerCase().includes('playbook') ||
+          parentCat.id === 'cat-11' ||
+          parentCat.id === 'cat-12')
+      ) {
+        return false;
+      }
+      if (
+        a.categoryName?.toLowerCase().includes('playbook') ||
+        a.categoryId === 'cat-11' ||
+        a.categoryId === 'cat-12'
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   // Filtrar artigos aprovados e com permissão de acesso (incluindo busca por código único como CC-101)
   const matchedArticles = normalized
@@ -49,13 +71,13 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
       )
     : availableArticles.slice(0, 6);
 
-  const matchedTools = normalized
+  const matchedTools = (!isExternal && normalized)
     ? tools.filter(
         (t) =>
           t.title.toLowerCase().includes(normalized) ||
           t.description.toLowerCase().includes(normalized)
       )
-    : tools.slice(0, 3);
+    : (!isExternal ? tools.slice(0, 3) : []);
 
   return (
     <div
@@ -204,66 +226,68 @@ export const SearchSpotlightModal: React.FC<SearchSpotlightModalProps> = ({
             )}
           </div>
 
-          {/* Ferramentas e Softwares */}
-          <div>
-            <div
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: 'var(--text-subtle)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                padding: '4px 8px',
-                marginBottom: '4px',
-              }}
-            >
-              Ferramentas & Utilitários ({matchedTools.length})
-            </div>
-            {matchedTools.map((tool) => (
+          {/* Ferramentas e Softwares (Apenas para Colaboradores Internos) */}
+          {!isExternal && matchedTools.length > 0 && (
+            <div>
               <div
-                key={tool.id}
-                onClick={() => {
-                  onSelectTool(tool);
-                  setIsSearchOpen(false);
-                }}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  color: 'var(--text-subtle)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  padding: '4px 8px',
+                  marginBottom: '4px',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Wrench size={16} color="var(--color-secondary)" />
-                  <div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                      {tool.title}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                      {tool.description}
+                Ferramentas & Utilitários ({matchedTools.length})
+              </div>
+              {matchedTools.map((tool) => (
+                <div
+                  key={tool.id}
+                  onClick={() => {
+                    onSelectTool(tool);
+                    setIsSearchOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Wrench size={16} color="var(--color-secondary)" />
+                    <div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                        {tool.title}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                        {tool.description}
+                      </div>
                     </div>
                   </div>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      padding: '2px 8px',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'var(--color-secondary-subtle)',
+                      color: 'var(--color-secondary)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {tool.resourceType === 'DOWNLOAD_FILE' ? tool.fileSize : 'Link'}
+                  </span>
                 </div>
-                <span
-                  style={{
-                    fontSize: '0.7rem',
-                    padding: '2px 8px',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'var(--color-secondary-subtle)',
-                    color: 'var(--color-secondary)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {tool.resourceType === 'DOWNLOAD_FILE' ? tool.fileSize : 'Link'}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Modal Footer hint */}
