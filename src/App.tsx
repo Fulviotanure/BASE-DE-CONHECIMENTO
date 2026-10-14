@@ -15,6 +15,7 @@ import { SearchSpotlightModal } from './components/search/SearchSpotlightModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
 import { CelebrationModal } from './components/gamification/CelebrationModal';
+import { CustomDialogModal } from './components/layout/CustomDialogModal';
 import { AiAssistantBot } from './components/ai/AiAssistantBot';
 import { isInternalUser, isExternalUser, isCorporateEmailValid } from './services/authService';
 import type { Article } from './types';
@@ -56,10 +57,13 @@ const MainApp: React.FC = () => {
     }
   }, [currentUser, isExternal, activeView]);
 
+  const [isEditorialQueueMode, setIsEditorialQueueMode] = useState(false);
+
   const handleOpenNewArticle = () => {
     setPreviousView(activeView);
     setEditingArticle(null);
     setIsProposalMode(false);
+    setIsEditorialQueueMode(false);
     setActiveView('editor');
   };
 
@@ -67,6 +71,15 @@ const MainApp: React.FC = () => {
     setPreviousView(activeView);
     setEditingArticle(art);
     setIsProposalMode(false);
+    setIsEditorialQueueMode(false);
+    setActiveView('editor');
+  };
+
+  const handleEditFromEditorialQueue = (art: Article) => {
+    setPreviousView('queue');
+    setEditingArticle(art);
+    setIsProposalMode(false);
+    setIsEditorialQueueMode(true);
     setActiveView('editor');
   };
 
@@ -74,6 +87,7 @@ const MainApp: React.FC = () => {
     setPreviousView(activeView);
     setEditingArticle(art);
     setIsProposalMode(true);
+    setIsEditorialQueueMode(false);
     setActiveView('editor');
   };
 
@@ -127,7 +141,7 @@ const MainApp: React.FC = () => {
             />
           )}
           {activeView === 'queue' && isInternal && (
-            <EditorialQueueView onEditArticle={handleEditArticle} />
+            <EditorialQueueView onEditArticle={handleEditFromEditorialQueue} />
           )}
           {activeView === 'tools' && isInternal && <ToolsHubView />}
           {(activeView === 'dashboard' || activeView === 'dashboard-articles' || activeView === 'dashboard-users') && isInternal && (
@@ -145,7 +159,11 @@ const MainApp: React.FC = () => {
             <ArticleEditorView
               editingArticle={editingArticle}
               isProposalMode={isProposalMode}
-              onClose={() => setActiveView(previousView || (isInternal ? 'kb' : 'my-articles'))}
+              isEditorialQueueMode={isEditorialQueueMode}
+              onClose={() => {
+                setActiveView(previousView || (isInternal ? 'kb' : 'my-articles'));
+                setIsEditorialQueueMode(false);
+              }}
             />
           )}
         </main>
@@ -178,6 +196,9 @@ const MainApp: React.FC = () => {
 
       {/* Celebration Modal (Parabéns + Gamificação + Confetes) */}
       <CelebrationModal />
+
+      {/* Janelas de Diálogo Amigáveis do Sistema (Alerts & Confirmações customizadas) */}
+      <CustomDialogModal />
 
       {/* Robô Assistente de IA - ConciliBot (Canto Inferior Direito) */}
       {!isLanding && (

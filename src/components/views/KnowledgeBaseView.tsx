@@ -29,6 +29,9 @@ import {
   Layers,
   Search,
   X,
+  MessageSquare,
+  Mail,
+  ArrowRight,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isInternalUser, isExternalUser } from '../../services/authService';
@@ -83,6 +86,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
   const isExternal = isExternalUser(currentUser);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isAdmin = isSuperAdmin || currentUser?.role === 'ADMIN';
+  const isReaderMode = isExternal || currentUser?.role === 'READER';
 
   // Se o usuário alternar para o modo leitor/externo e um artigo confidencial, interno ou playbook estiver aberto, retorna à listagem pública
   useEffect(() => {
@@ -264,7 +268,24 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
                 <span style={{ fontSize: '0.80rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
                   Código Único
                 </span>
-                {selectedArticle.currentStatus === 'APPROVED' ? (
+                {selectedArticle.currentStatus === 'NEEDS_REVISION' ? (
+                  <span
+                    style={{
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      padding: '2px 9px',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    🚨 Revisão Obrigatória (5 Deslikes)
+                  </span>
+                ) : selectedArticle.currentStatus === 'APPROVED' ? (
                   <span
                     style={{
                       fontSize: '0.74rem',
@@ -861,6 +882,225 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
             )}
           </div>
         )}
+
+        {/* Seção de Suporte Movidesk: Ainda tem dúvida sobre algo? (Exibido apenas no modo leitor) */}
+        {isReaderMode && (
+          <div
+            style={{
+              marginTop: '56px',
+              marginBottom: '32px',
+            }}
+          >
+          {/* Card Principal: Ainda tem dúvida sobre algo? */}
+          <div
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '36px 36px 32px 36px',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <div style={{ marginBottom: '28px' }}>
+              <h2
+                style={{
+                  fontSize: '1.65rem',
+                  fontWeight: 800,
+                  color: 'var(--text-main)',
+                  margin: '0 0 8px 0',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Ainda tem dúvida sobre algo?
+              </h2>
+              <p
+                style={{
+                  fontSize: '0.95rem',
+                  color: 'var(--text-muted)',
+                  margin: 0,
+                  lineHeight: 1.5,
+                }}
+              >
+                Acione nosso suporte, nosso time de especialistas está pronto para atendê-lo.
+              </p>
+            </div>
+
+            {/* Grid com os dois cards de canais de atendimento em verde */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '20px',
+              }}
+            >
+              {/* Card 1: Chat com o suporte */}
+              <div
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--color-primary)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(92, 183, 128, 0.16)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '10px',
+                      background: 'rgba(92, 183, 128, 0.12)',
+                      color: 'var(--color-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <MessageSquare size={20} />
+                  </div>
+                  <h3
+                    style={{
+                      fontSize: '1.08rem',
+                      fontWeight: 700,
+                      color: 'var(--text-main)',
+                      margin: '0 0 6px 0',
+                    }}
+                  >
+                    Chat com o suporte
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: '0.86rem',
+                      color: 'var(--text-muted)',
+                      margin: '0 0 20px 0',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Seg. a sex., das 8h30 às 17h30. Resposta em poucos minutos.
+                  </p>
+                </div>
+
+                <a
+                  href="https://conciliador-contabil2.movidesk.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    color: 'var(--color-primary)',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    transition: 'gap 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.gap = '9px')}
+                  onMouseLeave={(e) => (e.currentTarget.style.gap = '6px')}
+                >
+                  <span>Abrir o chat</span>
+                  <ArrowRight size={14} />
+                </a>
+              </div>
+
+              {/* Card 2: E-mail */}
+              <div
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--color-primary)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(92, 183, 128, 0.16)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '10px',
+                      background: 'rgba(92, 183, 128, 0.12)',
+                      color: 'var(--color-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <Mail size={20} />
+                  </div>
+                  <h3
+                    style={{
+                      fontSize: '1.08rem',
+                      fontWeight: 700,
+                      color: 'var(--text-main)',
+                      margin: '0 0 6px 0',
+                    }}
+                  >
+                    E-mail
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: '0.86rem',
+                      color: 'var(--text-muted)',
+                      margin: '0 0 20px 0',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Caso preferir, você também pode nos acionar pelo e-mail.
+                  </p>
+                </div>
+
+                <a
+                  href="mailto:suporte@conciliadorcontabil.com.br"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    color: 'var(--color-primary)',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    transition: 'gap 0.15s ease',
+                    wordBreak: 'break-all',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.gap = '9px')}
+                  onMouseLeave={(e) => (e.currentTarget.style.gap = '6px')}
+                >
+                  <span>suporte@conciliadorcontabil.com.br</span>
+                  <ArrowRight size={14} />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     )}
       </div>

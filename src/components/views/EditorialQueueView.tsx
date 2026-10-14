@@ -13,7 +13,8 @@ import {
   ArrowLeft,
   FileEdit,
   Tag,
-  Clock
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article, ArticleStatus, ArticleReviewComment } from '../../types';
@@ -39,6 +40,7 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
   });
 
   const countPending = articles.filter((a) => a.currentStatus === 'PENDING').length;
+  const countNeedsRevision = articles.filter((a) => a.currentStatus === 'NEEDS_REVISION').length;
   const countAdjust = articles.filter((a) => a.currentStatus === 'IN_ADJUSTMENT').length;
   const countApproved = articles.filter((a) => a.currentStatus === 'APPROVED').length;
   const countRejected = articles.filter((a) => a.currentStatus === 'REJECTED').length;
@@ -50,12 +52,16 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
     setNewCommentInput('');
   };
 
+  const activeReviewArticle = selectedReviewArticle
+    ? (articles.find((a) => a.id === selectedReviewArticle.id) || selectedReviewArticle)
+    : null;
+
   // Enviar mensagem no balão de conversa
   const handleSendComment = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!selectedReviewArticle || !newCommentInput.trim()) return;
+    if (!activeReviewArticle || !newCommentInput.trim()) return;
 
-    addArticleComment(selectedReviewArticle.id, newCommentInput.trim());
+    addArticleComment(activeReviewArticle.id, newCommentInput.trim());
 
     // Atualiza o estado local com o novo balão
     const newBubble: ArticleReviewComment = {
@@ -69,8 +75,8 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
     };
 
     setSelectedReviewArticle({
-      ...selectedReviewArticle,
-      comments: [...(selectedReviewArticle.comments || []), newBubble],
+      ...activeReviewArticle,
+      comments: [...(activeReviewArticle.comments || []), newBubble],
     });
 
     setNewCommentInput('');
@@ -78,7 +84,7 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
 
   // Confirmar Decisão Editorial
   const handleConfirmDecision = () => {
-    if (!selectedReviewArticle) return;
+    if (!activeReviewArticle) return;
 
     const feedbackText = generalFeedback.trim() ||
       (reviewAction === 'APPROVE'
@@ -87,14 +93,15 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
         ? 'Solicitação de ajustes enviada. Favor revisar os apontamentos na conversa em balões.'
         : 'Proposta reprovada pela equipe editorial.');
 
-    submitReview(selectedReviewArticle.id, reviewAction, feedbackText);
+    submitReview(activeReviewArticle.id, reviewAction, feedbackText);
     setSelectedReviewArticle(null);
   };
 
   // =========================================================================
   // CASO 1: PÁGINA COMPLETA DE REVISÃO EDITORIAL (NÃO MODAL / NÃO JANELA FLUTUANTE)
   // =========================================================================
-  if (selectedReviewArticle) {
+  if (activeReviewArticle) {
+    const selectedReviewArticle = activeReviewArticle;
     return (
       <div
         style={{
@@ -188,6 +195,8 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
               className={
                 selectedReviewArticle.currentStatus === 'PENDING'
                   ? 'badge badge-pending'
+                  : selectedReviewArticle.currentStatus === 'NEEDS_REVISION'
+                  ? 'badge badge-rejected'
                   : selectedReviewArticle.currentStatus === 'IN_ADJUSTMENT'
                   ? 'badge badge-adjust'
                   : selectedReviewArticle.currentStatus === 'APPROVED'
@@ -197,6 +206,8 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
             >
               {selectedReviewArticle.currentStatus === 'PENDING'
                 ? 'Pendente de Avaliação'
+                : selectedReviewArticle.currentStatus === 'NEEDS_REVISION'
+                ? '🚨 Revisão Obrigatória (5 Deslikes)'
                 : selectedReviewArticle.currentStatus === 'IN_ADJUSTMENT'
                 ? 'Em Ajuste Solicitado'
                 : selectedReviewArticle.currentStatus === 'APPROVED'
@@ -717,6 +728,39 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
 
         <button
           type="button"
+          onClick={() => setActiveTab('NEEDS_REVISION')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            background: activeTab === 'NEEDS_REVISION' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+            color: activeTab === 'NEEDS_REVISION' ? '#ef4444' : 'var(--text-muted)',
+            border: `1px solid ${activeTab === 'NEEDS_REVISION' ? 'rgba(239, 68, 68, 0.4)' : 'transparent'}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <AlertTriangle size={15} color="#ef4444" />
+          <span>Revisão Obrigatória</span>
+          <span
+            style={{
+              padding: '1px 7px',
+              borderRadius: 'var(--radius-full)',
+              background: 'rgba(239, 68, 68, 0.2)',
+              color: '#ef4444',
+              fontSize: '0.74rem',
+              fontWeight: 800,
+            }}
+          >
+            {countNeedsRevision}
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('IN_ADJUSTMENT')}
           style={{
             padding: '8px 16px',
@@ -886,6 +930,8 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
                     className={
                       art.currentStatus === 'PENDING'
                         ? 'badge badge-pending'
+                        : art.currentStatus === 'NEEDS_REVISION'
+                        ? 'badge badge-rejected'
                         : art.currentStatus === 'IN_ADJUSTMENT'
                         ? 'badge badge-adjust'
                         : art.currentStatus === 'APPROVED'
@@ -895,6 +941,8 @@ export const EditorialQueueView: React.FC<EditorialQueueViewProps> = ({ onEditAr
                   >
                     {art.currentStatus === 'PENDING'
                       ? 'Pendente'
+                      : art.currentStatus === 'NEEDS_REVISION'
+                      ? '🚨 Revisão Obrigatória'
                       : art.currentStatus === 'IN_ADJUSTMENT'
                       ? 'Em Ajuste'
                       : art.currentStatus === 'APPROVED'

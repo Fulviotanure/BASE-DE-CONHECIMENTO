@@ -1807,17 +1807,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 700 }}>
-              +100 pts Artigo Aprovado
-            </span>
             <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 700 }}>
-              +50 pts Artigo Submetido
+              +50 pts Submissão Inicial
             </span>
-            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontWeight: 700 }}>
-              +20 pts Em Ajuste
+            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 700 }}>
+              +50 pts Aprovação (Teto 100 pts)
+            </span>
+            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', fontWeight: 700 }}>
+              +20 pts Edição Aprovada
+            </span>
+            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', fontWeight: 700 }}>
+              -50 pts Reprovação Inicial
             </span>
             <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', fontWeight: 700 }}>
-              +30 pts Revisão Técnica
+              +30 pts Revisão Técnica (Redator)
+            </span>
+            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 700 }}>
+              +10 pts Like / -10 pts Dislike (Teto -50 pts)
+            </span>
+            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontWeight: 700 }}>
+              🚨 5 Dislikes: Revisão Obrigatória (-30 pts Revisor)
             </span>
           </div>
         </div>
@@ -1858,8 +1867,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <strong style={{ fontSize: '0.92rem', color: 'var(--text-main)', display: 'block', fontWeight: 800 }}>
                   {r.title}
                 </strong>
-                <span style={{ fontSize: '0.76rem', color: r.color, fontWeight: 700 }}>
-                  {r.minPoints} {r.nextRankPoints !== null ? `a ${r.nextRankPoints - 1} pts` : '+ pts (Máxima)'}
+                <span style={{ fontSize: '0.76rem', color: r.color, fontWeight: 700, display: 'block' }}>
+                  {r.minPoints} {r.nextRankPoints !== null ? `a ${r.nextRankPoints - 1} pts` : '+ pts (Tier Máximo Ilimitado)'}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                  Meta: {r.minApprovedArticles} {r.minApprovedArticles === 1 ? 'artigo aprovado' : 'artigos aprovados'}
                 </span>
               </div>
             </div>

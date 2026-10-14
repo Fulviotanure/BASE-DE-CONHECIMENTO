@@ -112,11 +112,11 @@ export const UserRankBadge: React.FC<UserRankBadgeProps> = ({
           </div>
         </div>
 
-        {showProgress && rank.nextRankPoints !== null && (
+        {showProgress && rank.nextRankPoints !== null ? (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: '4px' }}>
-              <span>Progresso para a próxima patente</span>
-              <span>{progressPercentage}%</span>
+              <span>Progresso (Pontos & Artigos)</span>
+              <span style={{ fontWeight: 800, color: rank.color }}>{progressPercentage}%</span>
             </div>
             <div style={{ width: '100%', height: '6px', background: 'var(--bg-input)', borderRadius: '3px', overflow: 'hidden' }}>
               <div
@@ -129,12 +129,20 @@ export const UserRankBadge: React.FC<UserRankBadgeProps> = ({
                 }}
               />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              <span>{rank.minPoints} pts</span>
-              <span>Próxima: {rank.nextRankPoints} pts</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '6px', flexWrap: 'wrap', gap: '4px' }}>
+              <span>
+                Pontos: <strong>{points}</strong> / {rank.nextRankPoints} pts
+              </span>
+              <span>
+                Meta: <strong>{gamification.publishedCount}</strong> / {rank.nextRankArticles} artigos
+              </span>
             </div>
           </div>
-        )}
+        ) : showProgress ? (
+          <div style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 700, textAlign: 'center', padding: '6px 0' }}>
+            👑 Patente Máxima Atingida! Acumulando pontos infinitamente no Tier Titã.
+          </div>
+        ) : null}
       </div>
     );
   }

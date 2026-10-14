@@ -68,6 +68,7 @@ export const UserManagementView: React.FC = () => {
   // Form de cadastro
   const [newEmail, setNewEmail] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
+  const [newRole, setNewRole] = useState<UserRole>('OPERATOR');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -223,17 +224,24 @@ export const UserManagementView: React.FC = () => {
     setErrorMsg('');
     setSuccessMsg('');
 
-    const res = await addNewUser(newEmail, newDisplayName);
+    const res = await addNewUser(newEmail, newDisplayName, undefined, newRole);
     if (!res.success) {
       setErrorMsg(res.error || 'Erro ao adicionar usuário.');
       return;
     }
 
-    setSuccessMsg(
-      activeTab === 'COLABORADORES'
-        ? 'Colaborador adicionado com sucesso com perfil inicial de Operador!'
-        : 'Usuário externo adicionado com sucesso com perfil inicial de Leitor!'
-    );
+    const roleLabel =
+      newRole === 'SUPER_ADMIN'
+        ? 'Super Administrador'
+        : newRole === 'ADMIN'
+        ? 'Administrador'
+        : newRole === 'REVIEWER'
+        ? 'Revisor / Editor'
+        : newRole === 'OPERATOR'
+        ? 'Operador'
+        : 'Leitor';
+
+    setSuccessMsg(`Usuário adicionado com sucesso com perfil de ${roleLabel}!`);
     setNewEmail('');
     setNewDisplayName('');
     setTimeout(() => {
@@ -261,7 +269,14 @@ export const UserManagementView: React.FC = () => {
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => setIsAddModalOpen(true)}
+          onClick={() => {
+            setNewRole(activeTab === 'COLABORADORES' ? 'OPERATOR' : 'READER');
+            setNewEmail('');
+            setNewDisplayName('');
+            setErrorMsg('');
+            setSuccessMsg('');
+            setIsAddModalOpen(true);
+          }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
         >
           <UserPlus size={16} />
@@ -453,14 +468,14 @@ export const UserManagementView: React.FC = () => {
                               width: '36px',
                               height: '36px',
                               borderRadius: 'var(--radius-full)',
-                              background: isFulvio
-                                ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
+                              background: (isFulvio || u.role === 'SUPER_ADMIN')
+                                ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
                                 : u.role === 'ADMIN'
                                 ? 'linear-gradient(135deg, #5cb780 0%, #38bdf8 100%)'
                                 : u.role === 'REVIEWER'
                                 ? 'linear-gradient(135deg, #6c63ff 0%, #a855f7 100%)'
                                 : 'var(--bg-surface)',
-                              border: `1px solid ${isFulvio ? '#5cb780' : 'var(--border-subtle)'}`,
+                              border: `1px solid ${isFulvio || u.role === 'SUPER_ADMIN' ? '#f59e0b' : 'var(--border-subtle)'}`,
                               color: '#ffffff',
                               fontWeight: 700,
                               display: 'flex',
@@ -505,7 +520,7 @@ export const UserManagementView: React.FC = () => {
                           <div>
                             <div style={{ fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span>{u.displayName}</span>
-                              {isFulvio && (
+                              {(isFulvio || u.role === 'SUPER_ADMIN') && (
                                 <span
                                   style={{
                                     fontSize: '0.68rem',
@@ -517,7 +532,7 @@ export const UserManagementView: React.FC = () => {
                                     fontWeight: 700,
                                   }}
                                 >
-                                  SUPERADMIN
+                                  {isFulvio ? 'SUPERADMIN' : 'SUPER ADMIN'}
                                 </span>
                               )}
                             </div>
@@ -557,23 +572,21 @@ export const UserManagementView: React.FC = () => {
                             cursor: isFulvio ? 'not-allowed' : 'pointer',
                           }}
                         >
-                          <option value="OPERATOR" style={{ background: '#1e2227', color: '#fff' }}>
-                            👷 Operador
-                          </option>
-                          <option value="REVIEWER" style={{ background: '#1e2227', color: '#6c63ff' }}>
-                            ✍️ Revisor / Editor
+                          <option value="SUPER_ADMIN" style={{ background: '#1e2227', color: '#f59e0b' }}>
+                            👑 Super Administrador
                           </option>
                           <option value="ADMIN" style={{ background: '#1e2227', color: '#5cb780' }}>
                             🛡️ Administrador
                           </option>
+                          <option value="REVIEWER" style={{ background: '#1e2227', color: '#6c63ff' }}>
+                            ✍️ Revisor / Editor
+                          </option>
+                          <option value="OPERATOR" style={{ background: '#1e2227', color: '#fff' }}>
+                            👷 Operador
+                          </option>
                           <option value="READER" style={{ background: '#1e2227', color: '#38bdf8' }}>
                             👤 Leitor (Apenas Leitura)
                           </option>
-                          {isFulvio && (
-                            <option value="SUPER_ADMIN" style={{ background: '#1e2227', color: '#f59e0b' }}>
-                              👑 Super Administrador
-                            </option>
-                          )}
                         </select>
                       </td>
 
@@ -841,8 +854,10 @@ export const UserManagementView: React.FC = () => {
                           height: '104px',
                           borderRadius: 'var(--radius-full)',
                           overflow: 'hidden',
-                          border: '3px solid var(--color-primary)',
-                          boxShadow: '0 6px 20px rgba(92, 183, 128, 0.35)',
+                          border: `3px solid ${activeUser.role === 'SUPER_ADMIN' ? '#f59e0b' : 'var(--color-primary)'}`,
+                          boxShadow: activeUser.role === 'SUPER_ADMIN'
+                            ? '0 6px 20px rgba(245, 158, 11, 0.35)'
+                            : '0 6px 20px rgba(92, 183, 128, 0.35)',
                         }}
                       >
                         {activeUser.photoURL ? (
@@ -861,8 +876,8 @@ export const UserManagementView: React.FC = () => {
                             style={{
                               width: '100%',
                               height: '100%',
-                              background: isFulvio
-                                ? 'linear-gradient(135deg, #5cb780 0%, #6c63ff 100%)'
+                              background: (isFulvio || activeUser.role === 'SUPER_ADMIN')
+                                ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
                                 : 'linear-gradient(135deg, #38bdf8 0%, #5cb780 100%)',
                               color: '#ffffff',
                               fontWeight: 900,
@@ -899,7 +914,7 @@ export const UserManagementView: React.FC = () => {
                       {activeUser.displayName}
                     </h4>
 
-                    <div style={{ marginBottom: '8px' }}>
+                    <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <span
                         style={{
                           fontSize: '0.7rem',
@@ -915,6 +930,23 @@ export const UserManagementView: React.FC = () => {
                       >
                         {isInternal ? 'Colaborador Interno' : 'Usuário Externo'}
                       </span>
+                      {activeUser.role === 'SUPER_ADMIN' && (
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '3px 10px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            color: '#f59e0b',
+                            border: '1px solid rgba(245, 158, 11, 0.4)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}
+                        >
+                          👑 Super Admin
+                        </span>
+                      )}
                     </div>
 
                     <div
@@ -994,7 +1026,7 @@ export const UserManagementView: React.FC = () => {
                         borderRadius: 'var(--radius-sm)',
                         fontSize: '0.82rem',
                         fontWeight: 600,
-                        color: isFulvio ? '#f59e0b' : 'var(--text-main)',
+                        color: activeUser.role === 'SUPER_ADMIN' ? '#f59e0b' : 'var(--text-main)',
                         cursor: isFulvio ? 'not-allowed' : 'pointer',
                         outline: 'none',
                       }}
@@ -1513,6 +1545,51 @@ export const UserManagementView: React.FC = () => {
                   />
                 </div>
 
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Cargo / Nível de Acesso:
+                  </label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as UserRole)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color:
+                        newRole === 'SUPER_ADMIN'
+                          ? '#f59e0b'
+                          : newRole === 'ADMIN'
+                          ? 'var(--color-primary)'
+                          : newRole === 'REVIEWER'
+                          ? 'var(--color-secondary)'
+                          : newRole === 'READER'
+                          ? '#38bdf8'
+                          : 'var(--text-main)',
+                    }}
+                  >
+                    <option value="SUPER_ADMIN" style={{ background: '#1e2227', color: '#f59e0b' }}>
+                      👑 Super Administrador (Acesso Total & Governança)
+                    </option>
+                    <option value="ADMIN" style={{ background: '#1e2227', color: '#5cb780' }}>
+                      🛡️ Administrador (Gestão de Usuários & Conteúdos)
+                    </option>
+                    <option value="REVIEWER" style={{ background: '#1e2227', color: '#6c63ff' }}>
+                      ✍️ Revisor / Editor (Aprovação e Fila Editorial)
+                    </option>
+                    <option value="OPERATOR" style={{ background: '#1e2227', color: '#fff' }}>
+                      👷 Operador Interno (Redação e Leitura Geral)
+                    </option>
+                    <option value="READER" style={{ background: '#1e2227', color: '#38bdf8' }}>
+                      👤 Leitor (Acesso aos Manuais Externos)
+                    </option>
+                  </select>
+                </div>
+
                 <div
                   style={{
                     fontSize: '0.75rem',
@@ -1523,13 +1600,21 @@ export const UserManagementView: React.FC = () => {
                     border: '1px solid var(--border-subtle)',
                   }}
                 >
-                  {activeTab === 'COLABORADORES' ? (
+                  {newRole === 'SUPER_ADMIN' ? (
+                    <span style={{ color: '#f59e0b' }}>
+                      👑 <strong>Super Administrador:</strong> Possui acesso irrestrito, permissão para gerenciar todos os usuários, aprovar artigos e configurar os módulos da base.
+                    </span>
+                  ) : newRole === 'ADMIN' ? (
+                    <span style={{ color: 'var(--color-primary)' }}>
+                      🛡️ <strong>Administrador:</strong> Acesso à gestão de usuários, gestão de módulos e publicação editorial.
+                    </span>
+                  ) : activeTab === 'COLABORADORES' ? (
                     <span>
-                      ℹ️ Novos colaboradores iniciam com o cargo de <strong>Operador</strong>. Você poderá promovê-los para Administrador ou Revisor diretamente na tabela.
+                      ℹ️ Colaboradores com cargo atribuído têm acesso aos manuais internos do Conciliador e ferramentas corporativas.
                     </span>
                   ) : (
                     <span>
-                      ℹ️ Clientes externos ingressam como <strong>Leitores</strong>, com visualização restrita a manuais públicos/externos.
+                      ℹ️ Clientes externos como <strong>Leitores</strong> possuem visualização restrita a manuais públicos/externos.
                     </span>
                   )}
                 </div>

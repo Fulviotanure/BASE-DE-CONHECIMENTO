@@ -39,6 +39,7 @@ import {
   Layers,
   Clock,
   Check,
+  CheckCircle2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Article } from '../../types';
@@ -46,6 +47,7 @@ import type { Article } from '../../types';
 interface ArticleEditorViewProps {
   editingArticle: Article | null;
   isProposalMode?: boolean;
+  isEditorialQueueMode?: boolean;
   onClose: () => void;
 }
 
@@ -72,18 +74,21 @@ const DYNAMIC_COLORS: DynamicColorOption[] = [
 export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   editingArticle,
   isProposalMode = false,
+  isEditorialQueueMode = false,
   onClose,
 }) => {
   const {
     categories,
     createArticle,
     updateArticleContent,
+    saveAndApproveArticle,
     deleteArticle,
     proposeArticleEdit,
     currentUser,
     isPermanentSuperAdmin,
     addArticleComment,
     articles,
+    showDialog,
   } = useApp();
 
   const isAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || isPermanentSuperAdmin;
@@ -207,13 +212,151 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   );
 
   const showConversationSidebar = Boolean(
-    currentArticle && (isAdjustmentMode || currentArticle.reviews?.length || currentArticle.proposalNote)
+    isEditorialQueueMode &&
+    currentArticle &&
+    (isAdjustmentMode || currentArticle.reviews?.length || currentArticle.proposalNote)
   );
+
+  // Normalização de elementos de mídia pré-existentes (vídeos legados, Froala, spans e imagens)
+  const normalizeMediaElements = (root: HTMLElement) => {
+    // 1. Normaliza Vídeos existentes (iframes, tags video ou spans do movidesk/froala)
+    const mediaEls = Array.from(root.querySelectorAll<HTMLElement>('iframe, video'));
+    mediaEls.forEach((mediaEl) => {
+      let parentFigure = mediaEl.closest('figure.article-video-figure') as HTMLElement | null;
+      let videoContainer = mediaEl.closest('.video-container') as HTMLElement | null;
+
+      if (!parentFigure) {
+        parentFigure = document.createElement('figure');
+        parentFigure.className = 'article-video-figure';
+        parentFigure.setAttribute('data-align', 'center');
+        parentFigure.style.width = '100%';
+        parentFigure.style.maxWidth = '100%';
+        parentFigure.style.boxSizing = 'border-box';
+        parentFigure.style.margin = '16px auto';
+        parentFigure.style.display = 'block';
+        parentFigure.style.clear = 'both';
+        parentFigure.style.textAlign = 'center';
+
+        const oldWrapper = mediaEl.closest('.fr-video') || mediaEl.closest('.video-container') || mediaEl;
+
+        if (mediaEl.tagName === 'IFRAME') {
+          if (!videoContainer) {
+            videoContainer = document.createElement('div');
+            videoContainer.className = 'video-container';
+            videoContainer.style.position = 'relative';
+            videoContainer.style.width = '100%';
+            videoContainer.style.aspectRatio = '16 / 9';
+            videoContainer.style.borderRadius = '8px';
+            videoContainer.style.overflow = 'hidden';
+            videoContainer.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)';
+            videoContainer.style.background = 'transparent';
+
+            mediaEl.style.position = 'absolute';
+            mediaEl.style.top = '0';
+            mediaEl.style.left = '0';
+            mediaEl.style.width = '100%';
+            mediaEl.style.height = '100%';
+            mediaEl.style.border = '0';
+            mediaEl.style.borderRadius = '8px';
+
+            videoContainer.appendChild(mediaEl);
+            parentFigure.appendChild(videoContainer);
+          } else {
+            videoContainer.style.position = 'relative';
+            videoContainer.style.width = '100%';
+            videoContainer.style.aspectRatio = '16 / 9';
+            videoContainer.style.borderRadius = '8px';
+            videoContainer.style.overflow = 'hidden';
+            videoContainer.style.background = 'transparent';
+            videoContainer.style.paddingBottom = '0';
+            videoContainer.style.height = 'auto';
+            parentFigure.appendChild(videoContainer);
+          }
+        } else if (mediaEl.tagName === 'VIDEO') {
+          const vid = mediaEl as HTMLVideoElement;
+          vid.style.width = '100%';
+          vid.style.maxHeight = '520px';
+          vid.style.display = 'block';
+          vid.style.borderRadius = '8px';
+          vid.style.background = 'transparent';
+          vid.style.margin = '0 auto';
+          vid.style.objectFit = 'contain';
+          parentFigure.appendChild(vid);
+        }
+
+        const pParent = oldWrapper.closest('p');
+        if (pParent && pParent.textContent?.trim() === '' && pParent.querySelectorAll('img, a').length === 0) {
+          pParent.parentNode?.replaceChild(parentFigure, pParent);
+        } else if (oldWrapper.parentNode) {
+          oldWrapper.parentNode.replaceChild(parentFigure, oldWrapper);
+        }
+      } else {
+        if (videoContainer) {
+          videoContainer.style.aspectRatio = '16 / 9';
+          videoContainer.style.paddingBottom = '0';
+          videoContainer.style.height = 'auto';
+          videoContainer.style.background = 'transparent';
+        }
+      }
+    });
+
+    // 2. Normaliza Imagens existentes
+    const imgs = Array.from(root.querySelectorAll<HTMLImageElement>('img'));
+    imgs.forEach((img) => {
+      let parentFigure = img.closest('figure.article-image-figure') as HTMLElement | null;
+      if (!parentFigure) {
+        parentFigure = document.createElement('figure');
+        parentFigure.className = 'article-image-figure';
+
+        let initialAlign: 'center' | 'left' | 'right' = 'center';
+        if (img.getAttribute('data-align') === 'left' || img.getAttribute('data-align') === 'right') {
+          initialAlign = img.getAttribute('data-align') as any;
+        }
+
+        parentFigure.setAttribute('data-align', initialAlign);
+        parentFigure.style.width = img.style.width && img.style.width.endsWith('%') ? img.style.width : '100%';
+        parentFigure.style.maxWidth = '100%';
+        parentFigure.style.boxSizing = 'border-box';
+        parentFigure.style.display = 'block';
+        parentFigure.style.margin = initialAlign === 'center' ? '16px auto' : initialAlign === 'left' ? '16px auto 16px 0' : '16px 0 16px auto';
+        parentFigure.style.float = 'none';
+        parentFigure.style.clear = 'both';
+        parentFigure.style.textAlign = initialAlign;
+
+        img.classList.remove('fr-fil', 'fr-fir', 'fr-fic', 'fr-dib');
+        img.style.width = '100%';
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        img.style.objectFit = 'contain';
+        img.style.display = 'block';
+        img.style.margin = '0 auto';
+
+        const pParent = img.closest('p');
+        if (pParent && pParent.textContent?.trim() === '' && pParent.querySelectorAll('img').length === 1) {
+          pParent.parentNode?.replaceChild(parentFigure, pParent);
+        } else {
+          img.parentNode?.insertBefore(parentFigure, img);
+        }
+        parentFigure.appendChild(img);
+      } else {
+        parentFigure.style.float = 'none';
+        parentFigure.style.clear = 'both';
+        img.classList.remove('fr-fil', 'fr-fir', 'fr-fic', 'fr-dib');
+        img.style.width = '100%';
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        img.style.objectFit = 'contain';
+        img.style.display = 'block';
+        img.style.margin = '0 auto';
+      }
+    });
+  };
 
   // Sincronização inicial do editor visual
   useEffect(() => {
     if (visualEditorRef.current) {
       visualEditorRef.current.innerHTML = content;
+      normalizeMediaElements(visualEditorRef.current);
     }
   }, []);
 
@@ -488,20 +631,18 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
     let figureStyle = `width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; margin: 16px auto; text-align: center; display: block; clear: both;`;
     if (align === 'left') {
-      figureStyle = `width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; float: left; margin: 10px 18px 16px 0; text-align: left; display: block; clear: none;`;
+      figureStyle = `width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; float: left; margin: 10px 20px 16px 0; text-align: left; display: block; clear: none;`;
     } else if (align === 'right') {
-      figureStyle = `width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; float: right; margin: 10px 0 16px 18px; text-align: right; display: block; clear: none;`;
+      figureStyle = `width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; float: right; margin: 10px 0 16px 20px; text-align: right; display: block; clear: none;`;
     }
 
     const videoInner = embedUrl
-      ? `<div class="video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; width: 100%; max-width: 100%; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000;">
-          <iframe src="${embedUrl}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; border-radius: 8px; object-fit: contain;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      ? `<div class="video-container" style="position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); background: transparent;">
+          <iframe src="${embedUrl}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; border-radius: 8px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>`
-      : `<div style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000; width: 100%;">
-          <video controls style="width: 100%; max-height: 520px; display: block; border-radius: 8px; object-fit: contain;" src="${trimmed}">
-            Seu navegador não suporta a tag de vídeo. Link: <a href="${trimmed}" target="_blank" rel="noopener noreferrer">${trimmed}</a>
-          </video>
-        </div>`;
+      : `<video controls style="width: 100%; max-height: 520px; display: block; border-radius: 8px; background: transparent; margin: 0 auto; object-fit: contain;" src="${trimmed}">
+          Seu navegador não suporta a tag de vídeo. Link: <a href="${trimmed}" target="_blank" rel="noopener noreferrer">${trimmed}</a>
+        </video>`;
 
     return `
       <figure class="article-video-figure" data-align="${align}" style="${figureStyle}">
@@ -517,8 +658,8 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     widthPercent: number = 60
   ) => {
     let floatStyle = 'float: none; margin: 14px auto; display: block; clear: both;';
-    if (align === 'left') floatStyle = 'float: left; margin: 8px 18px 14px 0; display: block; clear: none;';
-    else if (align === 'right') floatStyle = 'float: right; margin: 8px 0 14px 18px; display: block; clear: none;';
+    if (align === 'left') floatStyle = 'float: left; margin: 8px 20px 14px 0; display: block; clear: none;';
+    else if (align === 'right') floatStyle = 'float: right; margin: 8px 0 14px 20px; display: block; clear: none;';
 
     const figureHtml = `
       <figure class="article-image-figure" data-align="${align}" style="width: ${widthPercent}%; max-width: 100%; box-sizing: border-box; text-align: center; ${floatStyle}">
@@ -547,11 +688,9 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
           const videoDataUrl = event.target?.result as string;
           const figureHtml = `
             <figure class="article-video-figure" data-align="center" style="width: 100%; max-width: 100%; box-sizing: border-box; margin: 16px auto; text-align: center; display: block; clear: both;">
-              <div style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3); background: #000; width: 100%;">
-                <video controls style="width: 100%; max-height: 520px; display: block; border-radius: 8px; object-fit: contain;" src="${videoDataUrl}">
-                  Seu navegador não suporta a tag de vídeo.
-                </video>
-              </div>
+              <video controls style="width: 100%; max-height: 520px; display: block; border-radius: 8px; background: transparent; margin: 0 auto; object-fit: contain;" src="${videoDataUrl}">
+                Seu navegador não suporta a tag de vídeo.
+              </video>
             </figure><p><br></p>
           `;
           insertHtmlAtCursor(figureHtml);
@@ -773,32 +912,59 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     visualEditorRef.current?.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
       el.classList.remove('img-selected', 'video-selected');
     });
-    videoEl.classList.add('video-selected');
-    setSelectedVideoElement(videoEl);
+
+    // Encontra ou cria figure.article-video-figure de alto nível
+    let parentFigure = videoEl.closest('figure.article-video-figure') as HTMLElement | null;
+    if (!parentFigure) {
+      parentFigure = document.createElement('figure');
+      parentFigure.className = 'article-video-figure';
+      const initialAlign = videoEl.getAttribute('data-align') || (videoEl.style.float === 'left' ? 'left' : videoEl.style.float === 'right' ? 'right' : 'center');
+      parentFigure.setAttribute('data-align', initialAlign);
+      parentFigure.style.width = videoEl.style.width && videoEl.style.width.endsWith('%') ? videoEl.style.width : '100%';
+      parentFigure.style.maxWidth = '100%';
+      parentFigure.style.boxSizing = 'border-box';
+      parentFigure.style.margin = initialAlign === 'center' ? '16px auto' : initialAlign === 'left' ? '10px 20px 16px 0' : '10px 0 16px 20px';
+      parentFigure.style.float = initialAlign === 'center' ? 'none' : initialAlign;
+      parentFigure.style.clear = initialAlign === 'center' ? 'both' : 'none';
+      parentFigure.style.textAlign = initialAlign;
+      parentFigure.style.display = 'block';
+
+      const oldWrapper = videoEl.closest('.fr-video') || videoEl.closest('.video-container') || videoEl;
+      const pParent = oldWrapper.closest('p');
+      if (pParent && pParent.textContent?.trim() === '' && pParent.querySelectorAll('img, a').length === 0) {
+        pParent.parentNode?.replaceChild(parentFigure, pParent);
+      } else if (oldWrapper.parentNode) {
+        oldWrapper.parentNode.insertBefore(parentFigure, oldWrapper);
+      }
+      parentFigure.appendChild(oldWrapper);
+    }
+
+    parentFigure.classList.add('video-selected');
+    setSelectedVideoElement(parentFigure);
     setSelectedImage(null);
 
     // Remove qualquer figcaption remanescente do vídeo
-    videoEl.querySelectorAll('figcaption').forEach((fc) => fc.remove());
+    parentFigure.querySelectorAll('figcaption').forEach((fc) => fc.remove());
 
-    const wStr = videoEl.style.width;
+    const wStr = parentFigure.style.width;
     if (wStr && wStr.endsWith('%')) {
       setSelectedVideoWidth(parseInt(wStr, 10));
-    } else if (videoEl.offsetWidth && visualEditorRef.current) {
+    } else if (parentFigure.offsetWidth && visualEditorRef.current) {
       const editorWidth = visualEditorRef.current.clientWidth - 32;
-      const pct = Math.round((videoEl.offsetWidth / editorWidth) * 100);
+      const pct = Math.round((parentFigure.offsetWidth / editorWidth) * 100);
       setSelectedVideoWidth(Math.min(100, Math.max(15, pct)));
     } else {
       setSelectedVideoWidth(100);
     }
 
-    const alignAttr = videoEl.getAttribute('data-align');
-    if (alignAttr === 'left' || videoEl.style.float === 'left') setSelectedVideoAlign('left');
-    else if (alignAttr === 'right' || videoEl.style.float === 'right') setSelectedVideoAlign('right');
+    const alignAttr = parentFigure.getAttribute('data-align');
+    if (alignAttr === 'left' || parentFigure.style.float === 'left') setSelectedVideoAlign('left');
+    else if (alignAttr === 'right' || parentFigure.style.float === 'right') setSelectedVideoAlign('right');
     else setSelectedVideoAlign('center');
 
     if (editorWrapperRef.current) {
       const wrapperRect = editorWrapperRef.current.getBoundingClientRect();
-      const targetRect = videoEl.getBoundingClientRect();
+      const targetRect = parentFigure.getBoundingClientRect();
       if (targetRect.width > 0 && targetRect.height > 0) {
         const isNearTop = targetRect.top - wrapperRect.top < 45;
         setOverlayRect({
@@ -838,8 +1004,9 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
 
     const videoFigure = (target.closest('.article-video-figure') ||
       target.closest('.video-container') ||
-      (target.tagName === 'VIDEO' ? target.closest('.article-video-figure') || target : null) ||
-      (target.tagName === 'IFRAME' ? target.closest('.article-video-figure') || target : null)) as HTMLElement | null;
+      target.closest('.fr-video') ||
+      (target.tagName === 'VIDEO' || target.tagName === 'IFRAME' ? target.closest('.article-video-figure') || target : null) ||
+      (target.querySelector('iframe, video') ? target.closest('.article-video-figure') || target : null)) as HTMLElement | null;
 
     if (videoFigure) {
       selectVideoForResize(videoFigure);
@@ -984,6 +1151,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     const target = parentFigure || selectedImage;
     target.setAttribute('data-align', align);
     selectedImage.setAttribute('data-align', align);
+    selectedImage.classList.remove('fr-fil', 'fr-fir', 'fr-fic', 'fr-dib');
 
     if (align === 'center') {
       target.style.display = 'block';
@@ -991,8 +1159,8 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       target.style.clear = 'both';
       target.style.marginLeft = 'auto';
       target.style.marginRight = 'auto';
-      target.style.marginTop = '14px';
-      target.style.marginBottom = '14px';
+      target.style.marginTop = '16px';
+      target.style.marginBottom = '16px';
       target.style.textAlign = 'center';
       if (parentFigure) {
         selectedImage.style.display = 'block';
@@ -1003,25 +1171,33 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       }
     } else if (align === 'left') {
       target.style.display = 'block';
-      target.style.float = 'left';
-      target.style.clear = 'none';
+      target.style.float = 'none';
+      target.style.clear = 'both';
       target.style.marginLeft = '0';
-      target.style.marginRight = '18px';
-      target.style.marginTop = '8px';
-      target.style.marginBottom = '14px';
+      target.style.marginRight = 'auto';
+      target.style.marginTop = '16px';
+      target.style.marginBottom = '16px';
       target.style.textAlign = 'left';
+      if (parentFigure) {
+        selectedImage.style.display = 'block';
+        selectedImage.style.margin = '0 auto';
+      }
       if (target.parentElement && target.parentElement !== visualEditorRef.current) {
         target.parentElement.style.textAlign = 'left';
       }
     } else if (align === 'right') {
       target.style.display = 'block';
-      target.style.float = 'right';
-      target.style.clear = 'none';
-      target.style.marginLeft = '18px';
+      target.style.float = 'none';
+      target.style.clear = 'both';
+      target.style.marginLeft = 'auto';
       target.style.marginRight = '0';
-      target.style.marginTop = '8px';
-      target.style.marginBottom = '14px';
+      target.style.marginTop = '16px';
+      target.style.marginBottom = '16px';
       target.style.textAlign = 'right';
+      if (parentFigure) {
+        selectedImage.style.display = 'block';
+        selectedImage.style.margin = '0 auto';
+      }
       if (target.parentElement && target.parentElement !== visualEditorRef.current) {
         target.parentElement.style.textAlign = 'right';
       }
@@ -1089,11 +1265,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       }
     } else if (align === 'left') {
       selectedVideoElement.style.display = 'block';
-      selectedVideoElement.style.float = 'left';
-      selectedVideoElement.style.clear = 'none';
+      selectedVideoElement.style.float = 'none';
+      selectedVideoElement.style.clear = 'both';
       selectedVideoElement.style.marginLeft = '0';
-      selectedVideoElement.style.marginRight = '18px';
-      selectedVideoElement.style.marginTop = '10px';
+      selectedVideoElement.style.marginRight = 'auto';
+      selectedVideoElement.style.marginTop = '16px';
       selectedVideoElement.style.marginBottom = '16px';
       selectedVideoElement.style.textAlign = 'left';
       if (selectedVideoElement.parentElement && selectedVideoElement.parentElement !== visualEditorRef.current) {
@@ -1101,11 +1277,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       }
     } else if (align === 'right') {
       selectedVideoElement.style.display = 'block';
-      selectedVideoElement.style.float = 'right';
-      selectedVideoElement.style.clear = 'none';
-      selectedVideoElement.style.marginLeft = '18px';
+      selectedVideoElement.style.float = 'none';
+      selectedVideoElement.style.clear = 'both';
+      selectedVideoElement.style.marginLeft = 'auto';
       selectedVideoElement.style.marginRight = '0';
-      selectedVideoElement.style.marginTop = '10px';
+      selectedVideoElement.style.marginTop = '16px';
       selectedVideoElement.style.marginBottom = '16px';
       selectedVideoElement.style.textAlign = 'right';
       if (selectedVideoElement.parentElement && selectedVideoElement.parentElement !== visualEditorRef.current) {
@@ -1276,11 +1452,115 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     setCreatorReplyInput('');
   };
 
+  // Extrai o HTML limpo diretamente do DOM no instante exato da submissão
+  const getCleanSanitizedHtml = (): string => {
+    if (!visualEditorRef.current) return content;
+    const clone = visualEditorRef.current.cloneNode(true) as HTMLElement;
+
+    // 1. Remove classes de seleção de arraste do editor
+    clone.querySelectorAll('.img-selected, .video-selected').forEach((el) => {
+      el.classList.remove('img-selected', 'video-selected');
+    });
+
+    // 2. Normaliza e grava estilos explícitos de alinhamento e proporção em imagens e vídeos
+    clone.querySelectorAll('figure.article-image-figure, figure.article-video-figure').forEach((figEl) => {
+      const fig = figEl as HTMLElement;
+      const align = fig.getAttribute('data-align') || (fig.style.float === 'left' ? 'left' : fig.style.float === 'right' ? 'right' : 'center');
+      const wStr = fig.style.width || '100%';
+
+      fig.setAttribute('data-align', align);
+      fig.style.width = wStr;
+      fig.style.maxWidth = '100%';
+      fig.style.boxSizing = 'border-box';
+
+      if (align === 'center') {
+        fig.style.display = 'block';
+        fig.style.float = 'none';
+        fig.style.clear = 'both';
+        fig.style.marginLeft = 'auto';
+        fig.style.marginRight = 'auto';
+        fig.style.marginTop = '16px';
+        fig.style.marginBottom = '16px';
+        fig.style.textAlign = 'center';
+      } else if (align === 'left') {
+        fig.style.display = 'block';
+        fig.style.float = 'none';
+        fig.style.clear = 'both';
+        fig.style.marginLeft = '0';
+        fig.style.marginRight = 'auto';
+        fig.style.marginTop = '16px';
+        fig.style.marginBottom = '16px';
+        fig.style.textAlign = 'left';
+      } else if (align === 'right') {
+        fig.style.display = 'block';
+        fig.style.float = 'none';
+        fig.style.clear = 'both';
+        fig.style.marginLeft = 'auto';
+        fig.style.marginRight = '0';
+        fig.style.marginTop = '16px';
+        fig.style.marginBottom = '16px';
+        fig.style.textAlign = 'right';
+      }
+
+      fig.querySelectorAll('img').forEach((im) => {
+        im.classList.remove('fr-fil', 'fr-fir', 'fr-fic', 'fr-dib');
+        im.style.width = '100%';
+        im.style.maxWidth = '100%';
+        im.style.height = 'auto';
+        im.style.objectFit = 'contain';
+        im.style.display = 'block';
+        im.style.margin = '0 auto';
+      });
+
+      fig.querySelectorAll('.video-container').forEach((vc) => {
+        const container = vc as HTMLElement;
+        container.style.position = 'relative';
+        container.style.width = '100%';
+        container.style.aspectRatio = '16 / 9';
+        container.style.height = 'auto';
+        container.style.overflow = 'hidden';
+        container.style.borderRadius = '8px';
+        container.style.background = 'transparent';
+        container.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)';
+        container.style.paddingBottom = '0';
+      });
+
+      fig.querySelectorAll('iframe').forEach((ifr) => {
+        const iframe = ifr as HTMLElement;
+        iframe.style.position = 'absolute';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = '0';
+        iframe.style.borderRadius = '8px';
+      });
+
+      fig.querySelectorAll('video').forEach((v) => {
+        const vid = v as HTMLVideoElement;
+        vid.style.width = '100%';
+        vid.style.maxHeight = '520px';
+        vid.style.display = 'block';
+        vid.style.borderRadius = '8px';
+        vid.style.background = 'transparent';
+        vid.style.margin = '0 auto';
+      });
+    });
+
+    return clone.innerHTML;
+  };
+
   // Salvar Artigo
   const handleSaveAndSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!title.trim()) {
-      alert('Por favor, defina um título para o procedimento ou artigo.');
+      showDialog({
+        type: 'warning',
+        badgeText: 'Atenção',
+        title: 'Título Obrigatório',
+        message: 'Por favor, defina um título descritivo para o procedimento ou artigo antes de salvar.',
+        confirmText: 'Entendido',
+      });
       return;
     }
 
@@ -1297,46 +1577,157 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
     );
     const effectiveAccessLevel = isPb ? 'INTERNAL' : accessLevel;
 
+    const finalContent = getCleanSanitizedHtml();
+
     if (isProposalMode && editingArticle) {
       if (!proposalNote.trim()) {
-        alert('Por favor, preencha a justificativa da proposta de edição.');
+        showDialog({
+          type: 'warning',
+          badgeText: 'Atenção',
+          title: 'Justificativa Necessária',
+          message: 'Por favor, informe a justificativa da proposta de edição para que a equipe editorial possa avaliar as melhorias.',
+          confirmText: 'Entendido',
+        });
         return;
       }
       proposeArticleEdit(
         editingArticle.id,
         title.trim(),
         categoryId,
-        content,
+        finalContent,
         tags,
         effectiveAccessLevel,
         proposalNote.trim(),
         attachments
       );
-      alert('Proposta de edição submetida com sucesso para a Fila Editorial!');
+      showDialog({
+        type: 'review',
+        badgeText: 'Revisão Editorial',
+        title: 'Proposta Submetida com Sucesso!',
+        message: `Sua proposta de edição para o manual "${title.trim()}" foi enviada para a Fila Editorial.\n\nNossa equipe de revisores irá analisar o conteúdo para garantir o padrão de qualidade da Conciliador Contábil.`,
+        confirmText: 'OK, Concluir',
+        onConfirm: () => {
+          onClose();
+        },
+        onCancel: () => {
+          onClose();
+        },
+      });
     } else if (editingArticle) {
       updateArticleContent(
         editingArticle.id,
         title.trim(),
         categoryId,
-        content,
+        finalContent,
         tags,
         effectiveAccessLevel,
         attachments
       );
-      alert('Artigo atualizado com sucesso!');
+      if (isEditorialQueueMode) {
+        showDialog({
+          type: 'success',
+          badgeText: 'Edição Gravada na Fila',
+          title: 'Alterações Salvas na Fila Editorial!',
+          message: `As alterações no artigo "${title.trim()}" foram gravadas com sucesso!\n\nVocê pode continuar revisando ou aprovar oficialmente o manual quando desejar.`,
+          confirmText: 'OK, Concluir',
+          onConfirm: () => {
+            onClose();
+          },
+          onCancel: () => {
+            onClose();
+          },
+        });
+      } else {
+        showDialog({
+          type: 'review',
+          badgeText: 'Revisão Editorial Obrigatória',
+          title: 'Manual Atualizado e Enviado para Revisão!',
+          message: `As alterações no artigo "${title.trim()}" foram gravadas com sucesso!\n\nConforme as diretrizes editoriais do sistema, todo artigo criado ou editado passa obrigatoriamente pela Fila Editorial para verificação e garantia de qualidade antes de ser publicado para todos os usuários.`,
+          confirmText: 'OK, Entendido',
+          onConfirm: () => {
+            onClose();
+          },
+          onCancel: () => {
+            onClose();
+          },
+        });
+      }
     } else {
       createArticle(
         title.trim(),
         categoryId,
-        content,
+        finalContent,
         tags,
         effectiveAccessLevel,
         attachments
       );
-      alert('Artigo criado com sucesso e adicionado na árvore de navegação!');
+      showDialog({
+        type: 'review',
+        badgeText: 'Revisão Editorial Obrigatória',
+        title: 'Novo Manual Criado com Sucesso!',
+        message: `O artigo "${title.trim()}" foi registrado com sucesso!\n\nConforme as diretrizes do sistema, todo artigo criado ou editado passa obrigatoriamente pela Fila Editorial para revisão e validação antes da publicação oficial na Base de Conhecimento.`,
+        confirmText: 'OK, Entendido',
+        onConfirm: () => {
+          onClose();
+        },
+        onCancel: () => {
+          onClose();
+        },
+      });
+    }
+  };
+
+  // Salvar e Aprovar diretamente (disponível quando editando a partir da Fila Editorial)
+  const handleSaveAndApproveDirectly = () => {
+    if (!editingArticle) return;
+    if (!title.trim()) {
+      showDialog({
+        type: 'warning',
+        badgeText: 'Atenção',
+        title: 'Título Obrigatório',
+        message: 'Por favor, informe um título para o artigo antes de salvar e aprovar.',
+        confirmText: 'Entendido',
+      });
+      return;
     }
 
-    onClose();
+    const tags = tagInput
+      .split(',')
+      .map((t) => t.trim().replace(/^#/, ''))
+      .filter(Boolean);
+
+    const selCat = categories.find((c) => c.id === categoryId);
+    const isPb = Boolean(
+      categoryId === 'cat-11' ||
+      categoryId === 'cat-12' ||
+      selCat?.title?.toLowerCase().includes('playbook')
+    );
+    const effectiveAccessLevel = isPb ? 'INTERNAL' : accessLevel;
+    const finalContent = getCleanSanitizedHtml();
+
+    saveAndApproveArticle(
+      editingArticle.id,
+      title.trim(),
+      categoryId,
+      finalContent,
+      tags,
+      effectiveAccessLevel,
+      attachments
+    );
+
+    showDialog({
+      type: 'success',
+      badgeText: 'Aprovado & Publicado',
+      title: 'Artigo Salvo e Aprovado!',
+      message: `As alterações no artigo "${title.trim()}" foram gravadas e o manual foi oficialmente aprovado e publicado na Base de Conhecimento!`,
+      confirmText: 'OK, Concluir',
+      onConfirm: () => {
+        onClose();
+      },
+      onCancel: () => {
+        onClose();
+      },
+    });
   };
 
   // Exclusão definitiva do artigo pelo Administrador
@@ -1346,10 +1737,28 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       setIsDeletingArticle(true);
       await deleteArticle(editingArticle.id);
       setIsConfirmDeleteOpen(false);
-      onClose();
+      showDialog({
+        type: 'success',
+        badgeText: 'Sucesso',
+        title: 'Artigo Excluído',
+        message: `O artigo "${editingArticle.title}" foi removido com sucesso da Base de Conhecimento.`,
+        confirmText: 'OK',
+        onConfirm: () => {
+          onClose();
+        },
+        onCancel: () => {
+          onClose();
+        },
+      });
     } catch (err) {
       console.error('Erro ao excluir artigo:', err);
-      alert('Erro ao excluir o artigo. Tente novamente.');
+      showDialog({
+        type: 'error',
+        badgeText: 'Erro',
+        title: 'Falha na Exclusão',
+        message: 'Ocorreu um erro ao tentar excluir o artigo. Por favor, tente novamente.',
+        confirmText: 'Fechar',
+      });
       setIsDeletingArticle(false);
     }
   };
@@ -1453,9 +1862,11 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-main)' }}>
               {isProposalMode
                 ? 'Proposta de Edição'
+                : isEditorialQueueMode
+                ? 'Revisão Editorial (Ajuste Fino)'
                 : editingArticle
-                ? 'Editando Procedimento'
-                : 'Novo Artigo Técnico'}
+                ? 'Editando Artigo'
+                : 'Novo Artigo'}
             </span>
 
             <span
@@ -1539,6 +1950,33 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             <span>Prévia</span>
           </button>
 
+          {/* Botão Salvar e Aprovar diretamente (apenas quando na Fila Editorial) */}
+          {isEditorialQueueMode && editingArticle && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={handleSaveAndApproveDirectly}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 14px',
+                fontSize: '0.80rem',
+                fontWeight: 700,
+                color: '#ffffff',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+              }}
+              title="Salvar todas as alterações e aprovar o artigo imediatamente para publicação oficial na base"
+            >
+              <CheckCircle2 size={14} />
+              <span>Salvar e Aprovar</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="btn btn-primary btn-sm"
@@ -1546,7 +1984,15 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
             style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 12px', fontSize: '0.80rem', fontWeight: 700 }}
           >
             <Send size={13} />
-            <span>{isProposalMode ? 'Enviar Proposta' : 'Salvar e Publicar'}</span>
+            <span>
+              {isProposalMode
+                ? 'Enviar Proposta'
+                : isEditorialQueueMode
+                ? 'Salvar Alterações'
+                : editingArticle
+                ? 'Salvar Alterações'
+                : 'Salvar e Publicar'}
+            </span>
           </button>
 
           <button
@@ -2908,7 +3354,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
                     borderRadius: 'var(--radius-md)',
                     background: 'rgba(239, 68, 68, 0.08)',
                     border: '1px solid rgba(239, 68, 68, 0.25)',
-                    color: '#f87171',
+                    color: 'var(--editor-color-red, #dc2626)',
                     fontSize: '0.82rem',
                     marginBottom: '20px',
                     lineHeight: 1.4,

@@ -35,7 +35,7 @@ export interface Category {
   accessLevel?: 'INTERNAL' | 'ALL';
 }
 
-export type ArticleStatus = 'PENDING' | 'IN_ADJUSTMENT' | 'APPROVED' | 'REJECTED';
+export type ArticleStatus = 'PENDING' | 'IN_ADJUSTMENT' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
 
 export interface ArticleReviewComment {
   id: string;
@@ -51,6 +51,7 @@ export interface ArticleReview {
   id: string;
   reviewerId: string;
   reviewerName: string;
+  reviewerEmail?: string;
   action: 'APPROVE' | 'REQUEST_ADJUSTMENT' | 'REJECT';
   generalFeedback: string;
   comments: ArticleReviewComment[];
@@ -83,6 +84,12 @@ export interface Article {
   accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL';
   createdAt: string;
   updatedAt: string;
+  // Campos de rastreamento de pontuação e gatilhos de qualidade
+  approvedByReviewerEmail?: string;
+  isEditedVersion?: boolean;
+  editApprovedCount?: number;
+  initialSubmissionRejected?: boolean;
+  needsRevisionDueToDislikes?: boolean;
 }
 
 export type ToolCategory = 'SOFTWARES' | 'CONVERSORES' | 'LAYOUTS_ERP' | 'LINKS_OPERACIONAIS';
@@ -159,6 +166,8 @@ export interface UserRankInfo {
   level: number;
   minPoints: number;
   nextRankPoints: number | null;
+  minApprovedArticles: number;
+  nextRankArticles: number | null;
   color: string;
   gradient: string;
 }
@@ -171,5 +180,15 @@ export interface UserGamification {
   adjustmentsCount: number;
   reviewsCount: number;
   progressPercentage: number;
+  nextRank: UserRankInfo | null;
+  pointsProgress: number;
+  articlesProgress: number;
+  pointsToNextRank: number;
+  articlesToNextRank: number;
+  likesReceived: number;
+  dislikesReceived: number;
+  dislikesPenalty: number;
+  likesPoints: number;
+  reviewsPoints: number;
 }
 

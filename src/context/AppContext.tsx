@@ -9,6 +9,7 @@ import type {
   UserType, 
   ArticleStatus, 
   UserPerformance, 
+  ArticleReview,
   ArticleReviewComment,
   AppNotification,
   SentEmail,
@@ -44,6 +45,7 @@ import {
   getDeletedArticleIds,
   addDeletedArticleId,
   removeDeletedArticleId,
+  getLocalPreAssignedRole,
   setLocalPreAssignedRole,
   removeLocalPreAssignedRole,
 } from '../services/authService';
@@ -64,6 +66,18 @@ import {
   seedFirestoreWithMovideskData,
   seedUsersToFirestore
 } from '../services/firestoreService';
+
+export interface AppDialogState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  type?: 'success' | 'warning' | 'info' | 'error' | 'review';
+  badgeText?: string;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm?: () => void;
+  onCancel?: () => void;
+}
 
 interface AppContextType {
   // Usuário Atual & Autenticação
@@ -105,7 +119,7 @@ interface AppContextType {
   updateUserRole: (uid: string, newRole: UserRole) => void;
   toggleUserStatus: (uid: string) => void;
   deleteUser: (uid: string, email?: string) => Promise<{ success: boolean; error?: string }>;
-  addNewUser: (email: string, displayName: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  addNewUser: (email: string, displayName: string, password?: string, initialRoleParam?: UserRole) => Promise<{ success: boolean; error?: string }>;
 
   // Base de Conhecimento
   categories: Category[];
@@ -148,6 +162,17 @@ interface AppContextType {
     categoryId: string, 
     contentHtml: string, 
     tags: string[], 
+    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
+    attachments?: { id: string; name: string; size: string; url?: string }[],
+    subcategoryId?: string,
+    subcategoryName?: string
+  ) => void;
+  saveAndApproveArticle: (
+    articleId: string,
+    title: string,
+    categoryId: string,
+    contentHtml: string,
+    tags: string[],
     accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
     attachments?: { id: string; name: string; size: string; url?: string }[],
     subcategoryId?: string,
@@ -203,6 +228,11 @@ interface AppContextType {
   celebrationModal: { isOpen: boolean; title: string; message: string; points?: number } | null;
   triggerCelebration: (title?: string, message?: string, points?: number) => void;
   closeCelebrationModal: () => void;
+
+  // Janelas e Diálogos Amigáveis (Substitui alerts do navegador)
+  appDialog: AppDialogState | null;
+  showDialog: (options: Omit<AppDialogState, 'isOpen'>) => void;
+  closeDialog: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -359,7 +389,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [articles, setArticles] = useState<Article[]>(() => {
     const deletedArticleIds = getDeletedArticleIds();
-    const saved = localStorage.getItem('conciliador_articles_v8');
+    const saved = localStorage.getItem('conciliador_articles_v9');
     let loaded = INITIAL_ARTICLES;
     if (saved) {
       try {
@@ -368,19 +398,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           loaded = parsed;
         }
       } catch {}
-    } else {
-      const oldSaved = localStorage.getItem('conciliador_articles_v7');
-      if (oldSaved) {
-        try {
-          const parsedOld: Article[] = JSON.parse(oldSaved);
-          if (Array.isArray(parsedOld) && parsedOld.length > 0) {
-            loaded = parsedOld;
-          }
-        } catch {}
-      }
     }
 
-    const enriched = loaded
+    const sanitizedLoaded = loaded.map((art) => {
+      if (art.contentHtml && art.contentHtml.includes('s3.amazonaws.com/movidesk-files')) {
+        return {
+          ...art,
+          contentHtml: art.contentHtml.replace(
+            /https?:\/\/s3\.amazonaws\.com\/movidesk-files\/([A-Za-z0-9_-]+)(?:[^"'\s>]*)/g,
+            '/article-images/$1.png'
+          ),
+        };
+      }
+      return art;
+    });
+
+    const enriched = sanitizedLoaded
       .filter((art) => !deletedArticleIds.has(art.id))
       .map((art) => {
       const base = SEED_BASELINE_METRICS[art.code];
@@ -395,7 +428,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return art;
     });
 
-    localStorage.setItem('conciliador_articles_v8', JSON.stringify(enriched));
+    localStorage.setItem('conciliador_articles_v9', JSON.stringify(enriched));
     return enriched;
   });
 
@@ -405,7 +438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_articles_v8', JSON.stringify(articles));
+    localStorage.setItem('conciliador_articles_v9', JSON.stringify(articles));
   }, [articles]);
 
   const [tools, setTools] = useState<ToolItem[]>(() => {
@@ -535,6 +568,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCelebrationModal(null);
   };
 
+  // Diálogos e Modais Amigáveis do Sistema (Substitui alerts do navegador)
+  const [appDialog, setAppDialog] = useState<AppDialogState | null>(null);
+
+  const showDialog = (options: Omit<AppDialogState, 'isOpen'>) => {
+    setAppDialog({
+      ...options,
+      isOpen: true,
+    });
+  };
+
+  const closeDialog = () => {
+    setAppDialog(null);
+  };
+
   // ----------------------------------------------------
   // Sincronização em Tempo Real com Firestore
   // ----------------------------------------------------
@@ -567,12 +614,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 2. Ouvinte de Artigos Firestore
+    // 2. Ouvinte de Artigos Firestore (com auto-sanitização de links S3 para mídias locais)
     const unsubArticles = subscribeArticles((remoteArticles) => {
       const deletedArticleIds = getDeletedArticleIds();
       const filtered = remoteArticles.filter((a) => !deletedArticleIds.has(a.id));
       if (filtered.length > 0) {
-        setArticles(filtered);
+        let hasFixedS3 = false;
+        const sanitized = filtered.map((a) => {
+          if (a.contentHtml && a.contentHtml.includes('s3.amazonaws.com/movidesk-files')) {
+            hasFixedS3 = true;
+            const fixedHtml = a.contentHtml.replace(
+              /https?:\/\/s3\.amazonaws\.com\/movidesk-files\/([A-Za-z0-9_-]+)(?:[^"'\s>]*)/g,
+              '/article-images/$1.png'
+            );
+            const updatedArt = { ...a, contentHtml: fixedHtml };
+            if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br') {
+              saveArticleToFirestore(updatedArt).catch(() => {});
+            }
+            return updatedArt;
+          }
+          return a;
+        });
+
+        setArticles(sanitized);
+        if (hasFixedS3) {
+          localStorage.setItem('conciliador_articles_v9', JSON.stringify(sanitized));
+        }
       }
     });
 
@@ -817,12 +884,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const isFulvio = isSuperAdminUser(targetEmail);
 
         if (!user) {
+          const preRole = getLocalPreAssignedRole(targetEmail);
+          const effectiveRole: UserRole = isFulvio ? 'SUPER_ADMIN' : preRole || (isCorp ? 'OPERATOR' : 'READER');
+          const effectiveUserType: UserType = (effectiveRole !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
           user = {
             uid: `usr-google-${Date.now()}`,
             email: targetEmail,
             displayName: isFulvio ? 'Fulvio Tanure' : targetEmail.split('@')[0],
-            role: isFulvio ? 'SUPER_ADMIN' : isCorp ? 'OPERATOR' : 'READER',
-            userType: isCorp ? 'INTERNAL' : 'EXTERNAL',
+            role: effectiveRole,
+            userType: effectiveUserType,
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
             lastLoginAt: new Date().toISOString(),
@@ -894,11 +964,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err: any) {
         // Fallback resiliente para teste local caso o Firebase rejeite o login
         if (isCorp || isSuperAdminUser(cleanEmail)) {
+          const preRole = getLocalPreAssignedRole(cleanEmail);
+          const fallbackRole: UserRole = isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : (preRole || 'OPERATOR');
           const fallbackUser: UserProfile = {
             uid: `usr-fallback-${Date.now()}`,
             email: cleanEmail,
             displayName: cleanEmail.split('@')[0],
-            role: isSuperAdminUser(cleanEmail) ? 'SUPER_ADMIN' : 'OPERATOR',
+            role: fallbackRole,
             userType: 'INTERNAL',
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
@@ -919,8 +991,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let user = users.find((u) => u.email.toLowerCase() === cleanEmail);
     if (!user) {
       const isFulvio = isSuperAdminUser(cleanEmail);
-      const role: UserRole = isFulvio ? 'SUPER_ADMIN' : isCorp ? 'OPERATOR' : 'READER';
-      const userType: UserType = isCorp ? 'INTERNAL' : 'EXTERNAL';
+      const preRole = getLocalPreAssignedRole(cleanEmail);
+      const role: UserRole = isFulvio ? 'SUPER_ADMIN' : (preRole || (isCorp ? 'OPERATOR' : 'READER'));
+      const userType: UserType = (role !== 'READER' || isCorp) ? 'INTERNAL' : 'EXTERNAL';
       user = {
         uid: `usr-${Date.now()}`,
         email: cleanEmail,
@@ -1012,7 +1085,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Interação: Joinha (Like) e Deslike com histórico do usuário e notificação festiva ao autor
+  // Interação: Joinha (Like: +10 pts) e Deslike (-10 pts, teto de 50 pts por artigo) com Gatilho de Qualidade aos 5 deslikes
   const voteArticle = (articleId: string, type: 'like' | 'dislike') => {
     const userCleanEmail = currentUser?.email ? currentUser.email.toLowerCase().trim() : 'anonymous';
     const userVoteHistoryKey = `conciliador_user_votes_${userCleanEmail}`;
@@ -1026,11 +1099,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const articleSpecificKey = `conciliador_vote_${articleId}`;
     const previousVote = userVotesMap[articleId] || localStorage.getItem(articleSpecificKey);
 
+    // Limite configurável de dislikes para disparo automático de Revisão Obrigatória
+    const DISLIKE_REVIEW_THRESHOLD = 5;
+
     setArticles((prev) =>
       prev.map((art) => {
         if (art.id === articleId) {
           let likes = art.likesCount || 0;
           let dislikes = art.dislikesCount || 0;
+          let currentStatus = art.currentStatus;
+          let needsRevisionDueToDislikes = art.needsRevisionDueToDislikes || false;
 
           if (previousVote === type) {
             // Remove o voto ao clicar novamente
@@ -1047,22 +1125,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               likes += 1;
               confetti({ particleCount: 45, spread: 60, origin: { y: 0.75 } });
 
-              // Notificação imediata de parabéns para quem escreveu o artigo
+              // Notificação imediata de parabéns para quem escreveu o artigo (+10 pts)
               if (art.authorEmail) {
                 const voterName = currentUser?.displayName || 'Um usuário da base';
                 addNotification({
                   userEmail: art.authorEmail,
                   type: 'SYSTEM',
                   title: '🎉 Parabéns! Novo Like Conquistado!',
-                  message: `${voterName} curtiu seu artigo "${art.title}"! Seu conhecimento está ajudando toda a equipe.`,
+                  message: `${voterName} curtiu seu artigo "${art.title}"! (+10 Pontos de Conhecimento adicionados)`,
                   articleId: art.id,
                   articleTitle: art.title,
-                  pointsGained: 5,
+                  pointsGained: 10,
                   authorName: art.authorName,
                 });
               }
             } else {
               dislikes += 1;
+
+              // GATILHO DE REVISÃO OBRIGATÓRIA (5 Deslikes acumulados)
+              if (dislikes >= DISLIKE_REVIEW_THRESHOLD && art.currentStatus === 'APPROVED') {
+                currentStatus = 'NEEDS_REVISION';
+                needsRevisionDueToDislikes = true;
+
+                // 1. Alerta para a fila dos Redatores e Administradores
+                addNotification({
+                  type: 'ARTICLE_NEEDS_ADJUSTMENT',
+                  title: '🚨 Revisão Obrigatória: Artigo com 5 Deslikes',
+                  message: `O manual "${art.title}" (${art.code}) acumulou ${dislikes} deslikes e foi suspenso automaticamente para Revisão Obrigatória. Os 30 pontos do revisor foram suspensos.`,
+                  articleId: art.id,
+                  articleTitle: art.title,
+                  userEmail: art.authorEmail,
+                });
+
+                // 2. Alerta para o autor do artigo
+                if (art.authorEmail) {
+                  addNotification({
+                    userEmail: art.authorEmail,
+                    type: 'ARTICLE_NEEDS_ADJUSTMENT',
+                    title: '⚠️ Manual Suspenso para Revisão Obrigatória',
+                    message: `Seu manual "${art.title}" (${art.code}) atingiu o limite de 5 deslikes. Ele foi temporariamente ocultado dos leitores e encaminhado para readequação editorial. (Penalidade máxima de -50 pts aplicada).`,
+                    articleId: art.id,
+                    articleTitle: art.title,
+                  });
+                }
+
+                // 3. Alerta para o revisor que aprovou o artigo (perda dos 30 pontos)
+                if (art.approvedByReviewerEmail && art.approvedByReviewerEmail.toLowerCase() !== art.authorEmail.toLowerCase()) {
+                  addNotification({
+                    userEmail: art.approvedByReviewerEmail,
+                    type: 'ARTICLE_NEEDS_ADJUSTMENT',
+                    title: '📉 Pontos de Revisão Técnica Suspensos',
+                    message: `O artigo "${art.title}", validado por você, acumulou 5 deslikes. Os +30 pontos concedidos pela revisão técnica foram temporariamente cancelados até nova correção.`,
+                    articleId: art.id,
+                    articleTitle: art.title,
+                  });
+                }
+              }
             }
             userVotesMap[articleId] = type;
             localStorage.setItem(articleSpecificKey, type);
@@ -1072,11 +1190,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem(userVoteHistoryKey, JSON.stringify(userVotesMap));
           } catch {}
 
-          const updated = { ...art, likesCount: likes, dislikesCount: dislikes };
+          const updated: Article = {
+            ...art,
+            likesCount: likes,
+            dislikesCount: dislikes,
+            currentStatus,
+            needsRevisionDueToDislikes,
+          };
           if (selectedArticle?.id === articleId) setSelectedArticle(updated);
 
           if (isFirebaseConfigured) {
-            updateArticleInFirestore(articleId, { likesCount: likes, dislikesCount: dislikes }).catch((err) =>
+            updateArticleInFirestore(articleId, {
+              likesCount: likes,
+              dislikesCount: dislikes,
+              currentStatus,
+              needsRevisionDueToDislikes,
+            }).catch((err) =>
               console.warn('Erro ao registrar voto no Firestore:', err)
             );
           }
@@ -1400,10 +1529,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Cadastro de Colaborador no Painel Administrativo (nunca duplica e remove de excluídos caso esteja sendo readicionado)
-  const addNewUser = async (email: string, displayName: string, password?: string) => {
+  const addNewUser = async (email: string, displayName: string, password?: string, initialRoleParam?: UserRole) => {
     const cleanEmail = email.trim().toLowerCase();
-    const userType = determineUserType(cleanEmail);
-    const initialRole: UserRole = determineInitialRole(cleanEmail);
+    const initialRole: UserRole = initialRoleParam || determineInitialRole(cleanEmail);
+    const userType = determineUserType(cleanEmail, initialRole);
 
     if (users.some((u) => u.email.toLowerCase().trim() === cleanEmail)) {
       return { success: false, error: 'Este e-mail já está cadastrado no sistema.' };
@@ -1411,6 +1540,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Se o usuário havia sido excluído anteriormente e está sendo recadastrado, desfaz a exclusão
     removeDeletedUserEmail(cleanEmail);
+
+    // Registra a pré-atribuição de forma indelével localmente
+    setLocalPreAssignedRole(cleanEmail, initialRole);
 
     if (isFirebaseConfigured && password) {
       try {
@@ -1442,6 +1574,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...newUser,
             serverCreatedAt: serverTimestamp(),
           }).catch((err) => console.warn('Erro ao salvar novo colaborador no Firestore:', err));
+
+          setDoc(doc(db, 'pre_assigned_roles', cleanEmail), {
+            email: cleanEmail,
+            role: initialRole,
+            userType,
+            serverUpdatedAt: serverTimestamp(),
+          }, { merge: true }).catch((err) => console.warn('Erro ao salvar pre_assigned_role no Firestore:', err));
         });
       });
     }
@@ -1479,6 +1618,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const subcat = cat?.subcategories?.find((s) => s.id === subcategoryId);
 
+    // Conforme regra do sistema, TODO artigo criado ou editado vai obrigatoriamente para revisão editorial (PENDING)
     const newArt: Article = {
       id: `art-${Date.now()}`,
       code: nextCode,
@@ -1491,7 +1631,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorId: currentUser?.uid || 'usr-fulvio',
       authorName: currentUser?.displayName || 'Fulvio Tanure',
       authorEmail: currentUser?.email || 'fulvio@conciliadorcontabil.com.br',
-      currentStatus: isPrivileged ? 'APPROVED' : 'PENDING',
+      currentStatus: 'PENDING',
       accessLevel,
       tags,
       viewCount: 0,
@@ -1506,32 +1646,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setArticles((prev) => [newArt, ...prev]);
     setSelectedArticle(newArt);
 
-    if (newArt.currentStatus === 'APPROVED') {
-      sendArticleApprovedEmail(newArt, 'Publicação Direta do Administrador');
-      refreshSentEmails();
-      addNotification({
-        type: 'ARTICLE_APPROVED',
-        title: '🎉 Parabéns! Novo Manual Publicado!',
-        message: `Seu manual "${newArt.title}" (${newArt.code}) foi publicado com sucesso na Base de Conhecimento! (+100 Pontos)`,
-        articleId: newArt.id,
-        articleTitle: newArt.title,
-        userEmail: newArt.authorEmail,
-        pointsGained: 100,
-      });
-      triggerCelebration('🎉 Parabéns pelo novo manual!', `Seu artigo "${newArt.title}" foi publicado com sucesso! Você ganhou +100 Pontos de Conhecimento!`, 100);
-    } else {
-      sendArticleSubmittedEmail(newArt, newArt.authorName);
-      refreshSentEmails();
-      addNotification({
-        type: 'ARTICLE_SUBMITTED',
-        title: '📬 Manual Enviado para a Fila Editorial',
-        message: `Seu manual "${newArt.title}" (${newArt.code}) foi submetido para revisão dos editores. (+50 Pontos)`,
-        articleId: newArt.id,
-        articleTitle: newArt.title,
-        userEmail: newArt.authorEmail,
-        pointsGained: 50,
-      });
-    }
+    sendArticleSubmittedEmail(newArt, newArt.authorName);
+    refreshSentEmails();
+    addNotification({
+      type: 'ARTICLE_SUBMITTED',
+      title: '📬 Manual Enviado para a Fila Editorial',
+      message: `Seu manual "${newArt.title}" (${newArt.code}) foi submetido para revisão dos editores. (+50 Pontos)`,
+      articleId: newArt.id,
+      articleTitle: newArt.title,
+      userEmail: newArt.authorEmail,
+      pointsGained: 50,
+    });
 
     if (isFirebaseConfigured) {
       saveArticleToFirestore(newArt).catch((err) => {
@@ -1554,6 +1679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const cat = categories.find((c) => c.id === categoryId);
     const subcat = cat?.subcategories?.find((s) => s.id === subcategoryId);
+    // Conforme regra do sistema, qualquer edição em artigo existente o redireciona para revisão editorial (PENDING)
     const updates: Partial<Article> = {
       title,
       categoryId,
@@ -1563,13 +1689,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       contentHtml,
       tags,
       currentStatus: 'PENDING',
+      isEditedVersion: true,
       updatedAt: new Date().toISOString(),
       ...(accessLevel ? { accessLevel } : {}),
       ...(attachments ? { attachments } : {}),
     };
 
-    setArticles((prev) =>
-      prev.map((art) => {
+    setArticles((prev) => {
+      const next = prev.map((art) => {
         if (art.id === articleId) {
           const updated: Article = {
             ...art,
@@ -1580,12 +1707,145 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return updated;
         }
         return art;
-      })
-    );
+      });
+      try {
+        localStorage.setItem('conciliador_articles_v9', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    // Notifica sobre o reenvio da edição para revisão
+    const targetArt = articles.find((a) => a.id === articleId);
+    if (targetArt) {
+      const artToNotify: Article = { ...targetArt, ...updates };
+      sendArticleSubmittedEmail(artToNotify, currentUser?.displayName || targetArt.authorName);
+      refreshSentEmails();
+      addNotification({
+        type: 'ARTICLE_SUBMITTED',
+        title: '📬 Edição Enviada para Revisão Editorial',
+        message: `As alterações no manual "${updates.title || targetArt.title}" (${targetArt.code}) foram enviadas para validação editorial.`,
+        articleId: targetArt.id,
+        articleTitle: updates.title || targetArt.title,
+        userEmail: targetArt.authorEmail,
+      });
+    }
 
     if (isFirebaseConfigured) {
       updateArticleInFirestore(articleId, updates).catch((err) => {
         console.warn('Erro ao atualizar artigo no Firestore:', err);
+      });
+    }
+  };
+
+  // Edição e Aprovação Imediata pelo Revisor/Editor dentro da Fila Editorial
+  const saveAndApproveArticle = (
+    articleId: string,
+    title: string,
+    categoryId: string,
+    contentHtml: string,
+    tags: string[],
+    accessLevel?: 'INTERNAL' | 'EXTERNAL' | 'ALL',
+    attachments?: { id: string; name: string; size: string; url?: string }[],
+    subcategoryId?: string,
+    subcategoryName?: string
+  ) => {
+    const cat = categories.find((c) => c.id === categoryId);
+    const subcat = cat?.subcategories?.find((s) => s.id === subcategoryId);
+    const targetArt = articles.find((a) => a.id === articleId);
+    const isEdit = Boolean(targetArt?.isEditedVersion);
+
+    confetti({
+      particleCount: 120,
+      spread: 80,
+      origin: { y: 0.6 },
+      colors: ['#5cb780', '#6c63ff', '#38bdf8', '#f59e0b'],
+    });
+
+    const newReview: ArticleReview = {
+      id: `rev-${Date.now()}`,
+      reviewerId: currentUser?.uid || 'reviewer',
+      reviewerName: currentUser?.displayName || 'Revisor Editorial',
+      reviewerEmail: currentUser?.email,
+      action: 'APPROVE',
+      generalFeedback: 'Artigo revisado, formatado e aprovado com sucesso na Fila Editorial.',
+      comments: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    const decisionComment: ArticleReviewComment = {
+      id: `comm-dec-${Date.now()}`,
+      authorName: currentUser?.displayName || 'Revisor Editorial',
+      authorRole: currentUser?.role || 'REVIEWER',
+      authorEmail: currentUser?.email,
+      message: '[Decisão Editorial]: Artigo revisado e aprovado com todas as alterações aplicadas diretamente na fila editorial.',
+      isResolved: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updates: Partial<Article> = {
+      title,
+      categoryId,
+      categoryName: cat?.title || targetArt?.categoryName,
+      subcategoryId: subcategoryId || undefined,
+      subcategoryName: subcategoryName || subcat?.title || undefined,
+      contentHtml,
+      tags,
+      currentStatus: 'APPROVED',
+      isEditedVersion: false,
+      publishedAt: targetArt?.publishedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvedByReviewerEmail: currentUser?.email || targetArt?.approvedByReviewerEmail,
+      reviews: [newReview, ...(targetArt?.reviews || [])],
+      comments: [decisionComment, ...(targetArt?.comments || [])],
+      needsRevisionDueToDislikes: false,
+      ...(accessLevel ? { accessLevel } : {}),
+      ...(attachments ? { attachments } : {}),
+    };
+
+    setArticles((prev) => {
+      const next = prev.map((art) => {
+        if (art.id === articleId) {
+          const updated: Article = {
+            ...art,
+            ...updates,
+          };
+          setSelectedArticle(updated);
+          return updated;
+        }
+        return art;
+      });
+      try {
+        localStorage.setItem('conciliador_articles_v9', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    if (targetArt) {
+      const artToNotify: Article = { ...targetArt, ...updates };
+      sendArticleApprovedEmail(artToNotify, currentUser?.displayName || 'Equipe Editorial');
+      refreshSentEmails();
+
+      const authorPointsGained = isEdit ? 20 : 50;
+      addNotification({
+        type: 'ARTICLE_APPROVED',
+        title: isEdit ? '🎉 Edição de Artigo Aprovada!' : '🎉 Parabéns! Novo Manual Publicado!',
+        message: `O manual "${title}" foi ajustado e aprovado pela equipe editorial.`,
+        articleId: targetArt.id,
+        articleTitle: title,
+        userEmail: targetArt.authorEmail,
+        pointsGained: authorPointsGained,
+      });
+
+      triggerCelebration(
+        '🎉 Artigo Aprovado & Publicado!',
+        `O manual "${title}" foi atualizado e aprovado com sucesso!`,
+        authorPointsGained
+      );
+    }
+
+    if (isFirebaseConfigured) {
+      updateArticleInFirestore(articleId, updates).catch((err) => {
+        console.warn('Erro ao aprovar artigo no Firestore:', err);
       });
     }
   };
@@ -1607,12 +1867,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 4. Atualiza imediatamente o localStorage para não reaparecer no refresh
     try {
-      const saved = localStorage.getItem('conciliador_articles_v8');
+      const saved = localStorage.getItem('conciliador_articles_v9');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           const filtered = parsed.filter((c: any) => c.id !== articleId);
-          localStorage.setItem('conciliador_articles_v8', JSON.stringify(filtered));
+          localStorage.setItem('conciliador_articles_v9', JSON.stringify(filtered));
         }
       }
     } catch {}
@@ -1642,6 +1902,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       action === 'APPROVE' ? 'APPROVED' : action === 'REQUEST_ADJUSTMENT' ? 'IN_ADJUSTMENT' : 'REJECTED';
 
     const targetArticle = articles.find((a) => a.id === articleId);
+    const isEdit = Boolean(targetArticle?.isEditedVersion);
 
     if (action === 'APPROVE') {
       confetti({
@@ -1650,23 +1911,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 },
         colors: ['#5cb780', '#6c63ff', '#38bdf8', '#f59e0b'],
       });
+
       if (targetArticle) {
         sendArticleApprovedEmail(targetArticle, currentUser?.displayName || 'Equipe Editorial');
         refreshSentEmails();
+
+        // Regra do Operador:
+        // Se for Edição Aprovada: +20 pts
+        // Se for Artigo Novo Aprovado: +50 pts adicionais (atingindo o teto de 100 pts)
+        const authorPointsGained = isEdit ? 20 : 50;
+        const authorMessage = isEdit
+          ? `Sua edição no manual "${targetArticle.title}" foi aprovada e publicada! (+20 Pontos de Conhecimento)`
+          : `Seu manual "${targetArticle.title}" foi aprovado com sucesso! (+50 Pontos adicionais, atingindo 100 pts no artigo)`;
+
         addNotification({
           type: 'ARTICLE_APPROVED',
-          title: '🎉 Parabéns! Artigo Aprovado & Publicado!',
-          message: `Seu manual "${targetArticle.title}" foi aprovado e publicado com sucesso! (+100 Pontos de Conhecimento)`,
+          title: isEdit ? '🎉 Edição de Artigo Aprovada!' : '🎉 Parabéns! Novo Manual Publicado!',
+          message: authorMessage,
           articleId: targetArticle.id,
           articleTitle: targetArticle.title,
           userEmail: targetArticle.authorEmail,
-          pointsGained: 100,
+          pointsGained: authorPointsGained,
         });
+
         triggerCelebration(
-          '🎉 Parabéns pelo Artigo Aprovado!',
-          `O manual "${targetArticle.title}" foi validado e publicado oficialmente na Base de Conhecimento! (+100 Pontos)`,
-          100
+          isEdit ? '🎉 Edição Validada & Aprovada!' : '🎉 Parabéns pelo Artigo Aprovado!',
+          authorMessage,
+          authorPointsGained
         );
+
+        // Regra do Redator (Revisor):
+        // +30 pts fixos por cada artigo de terceiros que for validado e corrigido
+        const reviewerEmail = currentUser?.email?.toLowerCase().trim();
+        const authorEmail = targetArticle.authorEmail?.toLowerCase().trim();
+
+        if (reviewerEmail && authorEmail && reviewerEmail !== authorEmail) {
+          addNotification({
+            type: 'SYSTEM',
+            title: '📘 Revisão Técnica Concluída!',
+            message: `Você validou e corrigiu o artigo "${targetArticle.title}" de um colega. (+30 Pontos de Conhecimento creditados no seu perfil)`,
+            articleId: targetArticle.id,
+            articleTitle: targetArticle.title,
+            userEmail: currentUser.email,
+            pointsGained: 30,
+          });
+        }
       }
     } else if (action === 'REQUEST_ADJUSTMENT') {
       if (targetArticle) {
@@ -1681,12 +1970,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userEmail: targetArticle.authorEmail,
         });
       }
+    } else if (action === 'REJECT') {
+      if (targetArticle) {
+        // Regra do Operador:
+        // Artigo Reprovado (Submissão Inicial): -50 pts (perde os pontos da submissão inicial, zerando o saldo)
+        // Artigo Editado e Reprovado: 0 pts (não ganha pontos)
+        if (!isEdit) {
+          addNotification({
+            type: 'SYSTEM',
+            title: '❌ Submissão Inicial Reprovada',
+            message: `Seu artigo "${targetArticle.title}" foi reprovado na avaliação inicial pela equipe editorial. (-50 Pontos: saldo da submissão zerado).`,
+            articleId: targetArticle.id,
+            articleTitle: targetArticle.title,
+            userEmail: targetArticle.authorEmail,
+            pointsGained: -50,
+          });
+        } else {
+          addNotification({
+            type: 'SYSTEM',
+            title: '📝 Proposta de Edição Recusada',
+            message: `A proposta de edição para o manual "${targetArticle.title}" não foi aprovada pela equipe editorial (0 pts adicionais). A versão anterior continua ativa.`,
+            articleId: targetArticle.id,
+            articleTitle: targetArticle.title,
+            userEmail: targetArticle.authorEmail,
+            pointsGained: 0,
+          });
+        }
+      }
     }
 
-    const newReview = {
+    const newReview: ArticleReview = {
       id: `rev-${Date.now()}`,
       reviewerId: currentUser?.uid || 'reviewer',
       reviewerName: currentUser?.displayName || 'Revisor',
+      reviewerEmail: currentUser?.email,
       action,
       generalFeedback: feedback,
       comments: commentMessages.map((msg, idx) => ({
@@ -1700,8 +2017,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    setArticles((prev) =>
-      prev.map((art) => {
+    setArticles((prev) => {
+      const next = prev.map((art) => {
         if (art.id === articleId) {
           const currentComments = art.comments || [];
           const decisionComment: ArticleReviewComment | null = feedback.trim()
@@ -1718,13 +2035,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           const updatedComments = decisionComment ? [...currentComments, decisionComment] : currentComments;
 
+          const editCount = action === 'APPROVE' && isEdit
+            ? (art.editApprovedCount || 0) + 1
+            : (art.editApprovedCount || 0);
+
           const updated: Article = {
             ...art,
             currentStatus: newStatus,
-            publishedAt: action === 'APPROVE' ? new Date().toISOString() : art.publishedAt,
+            publishedAt: action === 'APPROVE' ? (art.publishedAt || new Date().toISOString()) : art.publishedAt,
             updatedAt: new Date().toISOString(),
             reviews: [newReview, ...(art.reviews || [])],
             comments: updatedComments,
+            approvedByReviewerEmail: action === 'APPROVE' ? (currentUser?.email || art.approvedByReviewerEmail) : art.approvedByReviewerEmail,
+            isEditedVersion: false,
+            editApprovedCount: editCount,
+            initialSubmissionRejected: action === 'REJECT' && !isEdit,
+            needsRevisionDueToDislikes: action === 'APPROVE' ? false : art.needsRevisionDueToDislikes,
           };
 
           if (selectedArticle?.id === articleId) {
@@ -1733,11 +2059,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (isFirebaseConfigured) {
             updateArticleInFirestore(articleId, {
+              title: updated.title,
+              contentHtml: updated.contentHtml,
               currentStatus: newStatus,
               publishedAt: updated.publishedAt,
               updatedAt: updated.updatedAt,
               reviews: updated.reviews,
               comments: updated.comments,
+              approvedByReviewerEmail: updated.approvedByReviewerEmail,
+              isEditedVersion: updated.isEditedVersion,
+              editApprovedCount: updated.editApprovedCount,
+              initialSubmissionRejected: updated.initialSubmissionRejected,
+              needsRevisionDueToDislikes: updated.needsRevisionDueToDislikes,
             }).catch((err) => {
               console.warn('Erro ao atualizar review no Firestore:', err);
             });
@@ -1746,8 +2079,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return updated;
         }
         return art;
-      })
-    );
+      });
+
+      try {
+        localStorage.setItem('conciliador_articles_v9', JSON.stringify(next));
+      } catch {}
+
+      return next;
+    });
   };
 
   // Adiciona mensagem no balão de conversa entre revisor e criador
@@ -2007,6 +2346,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         proposeArticleEdit,
         createArticle,
         updateArticleContent,
+        saveAndApproveArticle,
         deleteArticle,
         submitReview,
         addArticleComment,
@@ -2040,6 +2380,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         celebrationModal,
         triggerCelebration,
         closeCelebrationModal,
+        appDialog,
+        showDialog,
+        closeDialog,
         updateUserPhoto,
         pullGooglePhoto,
         getUserEngagementStats,

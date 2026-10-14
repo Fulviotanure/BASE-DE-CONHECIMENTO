@@ -108,10 +108,10 @@ export const UserProfileModal: React.FC = () => {
   if (!isProfileModalOpen || !currentUser) return null;
 
   const isInternal = isInternalUser(currentUser);
-  const canSimulate = isPermanentSuperAdmin && Boolean(currentUser.email && isSuperAdminUser(currentUser.email));
+  const canSimulate = isPermanentSuperAdmin || currentUser.role === 'SUPER_ADMIN';
 
   const roleLabel = {
-    SUPER_ADMIN: '👑 Super Administrador (Fixo)',
+    SUPER_ADMIN: isSuperAdminUser(currentUser.email) ? '👑 Super Administrador (Fixo)' : '👑 Super Administrador',
     ADMIN: '🛡️ Administrador',
     REVIEWER: '✍️ Editor & Revisor',
     OPERATOR: '👷 Operador Interno',
@@ -667,9 +667,9 @@ export const UserProfileModal: React.FC = () => {
                     </strong>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '2px' }}>
                       Você já acumulou <strong>{gamification.points} pontos</strong> de conhecimento e atingiu a patente <strong>{gamification.rank.title} {gamification.rank.badge}</strong>!
-                      {gamification.rank.nextRankPoints 
-                        ? ` Faltam apenas ${gamification.rank.nextRankPoints - gamification.points} pts para a próxima promoção.`
-                        : ' Você conquistou a patente máxima de Guardião Lendário! 👑'}
+                      {gamification.nextRank 
+                        ? ` Faltam ${gamification.pointsToNextRank} pts e ${gamification.articlesToNextRank} artigo(s) aprovado(s) para a próxima patente (${gamification.nextRank.title}).`
+                        : ' 👑 Você conquistou o nível máximo de Titã de Toda Sabedoria e continua acumulando pontos infinitamente!'}
                     </div>
                   </div>
                 </div>

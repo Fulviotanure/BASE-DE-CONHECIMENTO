@@ -523,32 +523,39 @@ input, textarea, select {
 }
 
 .article-visual-editor .video-container,
-.article-preview-content .video-container {
+.article-preview-content .video-container,
+.article-rendered-body .video-container,
+.video-container {
   position: relative;
-  padding-bottom: 56.25%;
-  height: 0;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
   overflow: hidden;
   max-width: 100%;
   border-radius: 8px;
-  background: #000;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  background: transparent;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .article-visual-editor .video-container iframe,
 .article-preview-content .video-container iframe,
-.article-rendered-body .video-container iframe {
+.article-rendered-body .video-container iframe,
+.video-container iframe {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
   border: 0;
   border-radius: 8px;
+  display: block;
 }
 
 /* No editor visual: desativa captura de cliques do iframe para permitir seleção e arraste de redimensionamento */
 .article-visual-editor .video-container iframe,
-.article-visual-editor .video-container video {
+.article-visual-editor .video-container video,
+.article-visual-editor iframe,
+.article-visual-editor video {
   pointer-events: none;
 }
 
@@ -804,25 +811,26 @@ figure.article-video-figure,
 
 figure.article-image-figure[data-align="center"] {
   display: block !important;
-  margin: 14px auto !important;
+  margin: 16px auto !important;
   text-align: center !important;
+  float: none !important;
   clear: both !important;
 }
 
 figure.article-image-figure[data-align="left"] {
   display: block !important;
-  float: left !important;
-  margin: 8px 18px 14px 0 !important;
+  float: none !important;
+  margin: 16px auto 16px 0 !important;
   text-align: left !important;
-  clear: none !important;
+  clear: both !important;
 }
 
 figure.article-image-figure[data-align="right"] {
   display: block !important;
-  float: right !important;
-  margin: 8px 0 14px 18px !important;
+  float: none !important;
+  margin: 16px 0 16px auto !important;
   text-align: right !important;
-  clear: none !important;
+  clear: both !important;
 }
 
 figure.article-image-figure img,
@@ -839,15 +847,30 @@ figure.article-image-figure img,
 }
 
 figure.article-video-figure video,
-figure.article-video-figure iframe,
 .article-visual-editor figure.article-video-figure video,
-.article-visual-editor figure.article-video-figure iframe {
+.article-preview-content figure.article-video-figure video,
+.article-rendered-body figure.article-video-figure video {
   width: 100% !important;
   max-width: 100% !important;
   height: auto !important;
+  max-height: 540px;
   object-fit: contain !important;
   display: block !important;
   box-sizing: border-box !important;
+  border-radius: 8px;
+  background: transparent !important;
+}
+
+figure.article-video-figure iframe,
+.article-visual-editor figure.article-video-figure iframe,
+.article-preview-content figure.article-video-figure iframe,
+.article-rendered-body figure.article-video-figure iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: 8px;
+  box-sizing: border-box !important;
+  display: block !important;
 }
 
 /* Remoção total de legendas (captions) e nomes de arquivo */
@@ -1102,14 +1125,24 @@ figure.article-video-figure,
   max-width: 100%;
 }
 
+/* Alinhamento Universal de Mídias (Imagens e Vídeos) - Editor, Revisão e Leitor */
 .article-visual-editor figure[data-align="center"],
 .article-visual-editor .article-image-figure[data-align="center"],
-.article-visual-editor .article-video-figure[data-align="center"] {
+.article-visual-editor .article-video-figure[data-align="center"],
+.article-preview-content figure[data-align="center"],
+.article-preview-content .article-image-figure[data-align="center"],
+.article-preview-content .article-video-figure[data-align="center"],
+.article-rendered-body figure[data-align="center"],
+.article-rendered-body .article-image-figure[data-align="center"],
+.article-rendered-body .article-video-figure[data-align="center"],
+figure.article-image-figure[data-align="center"],
+figure.article-video-figure[data-align="center"],
+figure[data-align="center"] {
   display: block !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  margin-top: 14px !important;
-  margin-bottom: 14px !important;
+  margin-top: 16px !important;
+  margin-bottom: 16px !important;
   float: none !important;
   clear: both !important;
   text-align: center !important;
@@ -1117,31 +1150,51 @@ figure.article-video-figure,
 
 .article-visual-editor figure[data-align="left"],
 .article-visual-editor .article-image-figure[data-align="left"],
-.article-visual-editor .article-video-figure[data-align="left"] {
+.article-visual-editor .article-video-figure[data-align="left"],
+.article-preview-content figure[data-align="left"],
+.article-preview-content .article-image-figure[data-align="left"],
+.article-preview-content .article-video-figure[data-align="left"],
+.article-rendered-body figure[data-align="left"],
+.article-rendered-body .article-image-figure[data-align="left"],
+.article-rendered-body .article-video-figure[data-align="left"],
+figure.article-image-figure[data-align="left"],
+figure.article-video-figure[data-align="left"],
+figure[data-align="left"] {
   display: block !important;
   margin-left: 0 !important;
-  margin-right: 18px !important;
-  margin-top: 10px !important;
-  margin-bottom: 14px !important;
-  float: left !important;
-  clear: none !important;
+  margin-right: auto !important;
+  margin-top: 14px !important;
+  margin-bottom: 16px !important;
+  float: none !important;
+  clear: both !important;
   text-align: left !important;
 }
 
 .article-visual-editor figure[data-align="right"],
 .article-visual-editor .article-image-figure[data-align="right"],
-.article-visual-editor .article-video-figure[data-align="right"] {
+.article-visual-editor .article-video-figure[data-align="right"],
+.article-preview-content figure[data-align="right"],
+.article-preview-content .article-image-figure[data-align="right"],
+.article-preview-content .article-video-figure[data-align="right"],
+.article-rendered-body figure[data-align="right"],
+.article-rendered-body .article-image-figure[data-align="right"],
+.article-rendered-body .article-video-figure[data-align="right"],
+figure.article-image-figure[data-align="right"],
+figure.article-video-figure[data-align="right"],
+figure[data-align="right"] {
   display: block !important;
-  margin-left: 18px !important;
+  margin-left: auto !important;
   margin-right: 0 !important;
-  margin-top: 10px !important;
-  margin-bottom: 14px !important;
-  float: right !important;
-  clear: none !important;
+  margin-top: 14px !important;
+  margin-bottom: 16px !important;
+  float: none !important;
+  clear: both !important;
   text-align: right !important;
 }
 
-.article-visual-editor img[data-align="center"] {
+.article-visual-editor img[data-align="center"],
+.article-preview-content img[data-align="center"],
+.article-rendered-body img[data-align="center"] {
   display: block !important;
   margin-left: auto !important;
   margin-right: auto !important;
@@ -1149,20 +1202,42 @@ figure.article-video-figure,
   clear: both !important;
 }
 
-.article-visual-editor img[data-align="left"] {
+.article-visual-editor img[data-align="left"],
+.article-preview-content img[data-align="left"],
+.article-rendered-body img[data-align="left"] {
   display: block !important;
   margin-left: 0 !important;
-  margin-right: 18px !important;
-  float: left !important;
-  clear: none !important;
+  margin-right: auto !important;
+  float: none !important;
+  clear: both !important;
 }
 
-.article-visual-editor img[data-align="right"] {
+.article-visual-editor img[data-align="right"],
+.article-preview-content img[data-align="right"],
+.article-rendered-body img[data-align="right"] {
   display: block !important;
-  margin-left: 18px !important;
+  margin-left: auto !important;
   margin-right: 0 !important;
-  float: right !important;
-  clear: none !important;
+  float: none !important;
+  clear: both !important;
+}
+
+/* Neutraliza classes legadas do Froala / Movidesk que causavam texto ao lado da imagem */
+.article-rendered-body .fr-fil,
+.article-preview-content .fr-fil,
+.article-visual-editor .fr-fil,
+.article-rendered-body .fr-fir,
+.article-preview-content .fr-fir,
+.article-visual-editor .fr-fir,
+.article-rendered-body .fr-fic,
+.article-preview-content .fr-fic,
+.article-visual-editor .fr-fic,
+.article-rendered-body .fr-dib,
+.article-preview-content .fr-dib,
+.article-visual-editor .fr-dib {
+  float: none !important;
+  clear: both !important;
+  display: block !important;
 }
 
 /* Barra de Rolagem Exclusiva e de Alto Contraste para o Editor de Artigos */
