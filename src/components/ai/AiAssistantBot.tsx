@@ -119,7 +119,7 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       xmlns="http://www.w3.org/2000/svg"
       style={{
         overflow: 'visible',
-        filter: 'drop-shadow(0 6px 14px rgba(15, 23, 42, 0.3)) drop-shadow(0 0 10px rgba(92, 183, 128, 0.2))',
+        filter: 'drop-shadow(0 6px 14px rgba(15, 23, 42, 0.22))',
       }}
     >
       <defs>
@@ -145,9 +145,6 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
           <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="rgba(15,23,42,0.3)" />
         </filter>
       </defs>
-
-      {/* Aura suave de presença esmeralda / Conciliador Contábil */}
-      <ellipse cx="49" cy="55" rx="38" ry="44" fill="rgba(92, 183, 128, 0.12)" />
 
       {/* CORPO DO CLIPS (Arame de metal dobrado clássico) */}
       <path
@@ -240,14 +237,6 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       ) : (
         <path d="M 43 56 Q 48.5 60 54 56" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" fill="none" />
       )}
-
-      {/* Gravatinha Borboleta Verde Conciliador (Toque contábil exclusivo!) */}
-      <g transform="translate(48.5, 78)">
-        <path d="M -2 0 L -9 -5 L -9 5 Z" fill="#10b981" stroke="#047857" strokeWidth="1" strokeLinejoin="round" />
-        <path d="M 2 0 L 9 -5 L 9 5 Z" fill="#10b981" stroke="#047857" strokeWidth="1" strokeLinejoin="round" />
-        <circle cx="0" cy="0" r="2.8" fill="#5cb780" stroke="#047857" strokeWidth="0.8" />
-        <circle cx="-0.8" cy="-0.8" r="0.9" fill="#ffffff" opacity="0.9" />
-      </g>
     </svg>
   );
 };
@@ -365,7 +354,7 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
       {
         id: 'welcome-msg',
         sender: 'bot',
-        text: `Olá! Eu sou o **Clips** 📎✨, seu assistente inteligente na Base de Conhecimento do Conciliador Contábil!\n\nEstou aqui para tirar dúvidas sobre processos, manuais, regras de conciliação e rotinas da equipe.\n\n**O que posso te ajudar a resolver hoje?**`,
+        text: `Olá! Eu sou **O Conciliador** 📎, seu assistente inteligente na Base de Conhecimento do Conciliador Contábil!\n\nEstou aqui para tirar dúvidas sobre processos, manuais, regras de conciliação e rotinas da equipe.\n\n**O que posso te ajudar a resolver hoje?**`,
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         quickReplies: isInternal ? [
           'Como conciliar extrato bancário?',
@@ -612,7 +601,7 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
     // 2. Tratamento para identidade do robô
     if (cleanQuery.includes('quem é você') || cleanQuery.includes('quem e voce') || cleanQuery.includes('seu nome') || cleanQuery.includes('o que você faz')) {
       return {
-        text: `Eu sou o **Clips** 📎✨, o assistente virtual com inteligência artificial integrado à Base de Conhecimento do Conciliador Contábil!\n\nInspirado no clássico ajudante do Windows, minha missão é analisar todos os manuais oficiais da nossa base para responder suas dúvidas com precisão, explicar o passo a passo e indicar os artigos de referência.`,
+        text: `Eu sou **O Conciliador** 📎, assistente inteligente integrado à Base de Conhecimento do Conciliador Contábil!\n\nMinha missão é analisar todos os manuais oficiais da nossa base para responder suas dúvidas com precisão, explicar o passo a passo e indicar os artigos de referência.`,
         articles: [],
         quickReplies: defaultQuickReplies,
       };
@@ -698,7 +687,7 @@ Conteúdo/Instruções: ${m.cleanContent.slice(0, 1200)}`;
     // =========================================================================
     if (aiProvider === 'gemini' && geminiApiKey.trim()) {
       try {
-        const prompt = `Você é o ConciliBot, o assistente inteligente oficial da Base de Conhecimento do software Conciliador Contábil.
+        const prompt = `Você é O Conciliador, o assistente inteligente oficial da Base de Conhecimento do software Conciliador Contábil.
 Sua missão é responder à dúvida do usuário de forma clara, amigável, didática e direta em português brasileiro.
 Baseie-se estritamente nas regras e procedimentos descritos nos manuais da equipe fornecidos abaixo.
 
@@ -753,7 +742,7 @@ INSTRUÇÕES OBRIGATÓRIAS:
     // =========================================================================
     if (aiProvider === 'openai' && openaiApiKey.trim()) {
       try {
-        const systemPrompt = `Você é o ConciliBot, o assistente inteligente oficial da Base de Conhecimento do software Conciliador Contábil.
+        const systemPrompt = `Você é O Conciliador, o assistente inteligente oficial da Base de Conhecimento do software Conciliador Contábil.
 Sua missão é responder à dúvida do usuário com base nos manuais fornecidos abaixo, com explicações didáticas, passos práticos e linguagem acolhedora em português brasileiro.
 Destaque termos importantes em negrito (**termo**).
 
@@ -960,8 +949,8 @@ ${contextArticles}`;
                   width: '38px',
                   height: '38px',
                   borderRadius: '12px',
-                  background: isDark ? 'rgba(92, 183, 128, 0.15)' : 'rgba(92, 183, 128, 0.12)',
-                  border: '1px solid rgba(92, 183, 128, 0.3)',
+                  background: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+                  border: '1px solid var(--border-subtle)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -972,7 +961,7 @@ ${contextArticles}`;
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <strong style={{ fontSize: '0.92rem', color: 'var(--text-main)', fontWeight: 800 }}>
-                    ConciliClips IA
+                    O Conciliador
                   </strong>
                   {isAdmin ? (
                     <span
@@ -1795,7 +1784,7 @@ ${contextArticles}`;
                       }}
                     >
                       <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginRight: '4px' }}>
-                        {aiProvider !== 'local' && hasConfiguredApi ? 'Clips consultando IA & manuais...' : 'Clips pesquisando nos manuais...'}
+                        {aiProvider !== 'local' && hasConfiguredApi ? 'O Conciliador consultando IA & manuais...' : 'O Conciliador pesquisando nos manuais...'}
                       </span>
                       <div style={{ display: 'flex', gap: '3px' }}>
                         <span
@@ -1903,8 +1892,8 @@ ${contextArticles}`;
                 <div style={{ textAlign: 'center', marginTop: '6px' }}>
                   <span style={{ fontSize: '0.64rem', color: 'var(--text-subtle)' }}>
                     {hasConfiguredApi
-                      ? `ConciliBot IA conectado via ${aiProvider.toUpperCase()} (${aiProvider === 'gemini' ? geminiModel : openaiModel})`
-                      : 'ConciliBot IA • Alimentado pelos artigos oficiais do Conciliador Contábil'}
+                      ? `O Conciliador conectado via ${aiProvider.toUpperCase()} (${aiProvider === 'gemini' ? geminiModel : openaiModel})`
+                      : 'O Conciliador • Alimentado pelos artigos oficiais do Conciliador Contábil'}
                   </span>
                 </div>
               </div>
@@ -1940,9 +1929,7 @@ ${contextArticles}`;
               background: isDark ? 'rgba(30, 34, 39, 0.95)' : '#ffffff',
               color: 'var(--text-main)',
               border: '1px solid var(--border-subtle)',
-              boxShadow: isDark
-                ? '0 8px 24px rgba(0, 0, 0, 0.4), 0 0 12px rgba(92, 183, 128, 0.2)'
-                : '0 8px 20px rgba(0, 0, 0, 0.12), 0 0 10px rgba(92, 183, 128, 0.1)',
+              boxShadow: isDark ? '0 8px 24px rgba(0, 0, 0, 0.4)' : '0 8px 20px rgba(0, 0, 0, 0.12)',
               fontSize: '0.80rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -1954,7 +1941,7 @@ ${contextArticles}`;
               maxWidth: '220px',
             }}
           >
-            <span>Parece que você precisa de ajuda com os manuais! 📎✨</span>
+            <span>Precisa de ajuda? O Conciliador está aqui! 📎</span>
             <button
               type="button"
               onClick={(e) => {
@@ -1997,25 +1984,10 @@ ${contextArticles}`;
             justifyContent: 'center',
             outline: 'none',
           }}
-          title={isOpen ? 'Fechar Clips IA' : 'Abrir Clips IA - Pergunte sobre os manuais'}
+          title={isOpen ? 'Fechar O Conciliador' : 'Abrir O Conciliador - Pergunte sobre os manuais'}
         >
           {/* Avatar SVG do Clips (Clippy) */}
           <ClippyAvatarSVG size={72} isHappy={isBotHovered || isOpen} trackMouse={true} />
-
-          {/* Badge de Status / Mensagens */}
-          <span
-            style={{
-              position: 'absolute',
-              bottom: '4px',
-              right: '4px',
-              width: '14px',
-              height: '14px',
-              borderRadius: '50%',
-              background: '#10b981',
-              border: '2.5px solid var(--bg-app)',
-              boxShadow: '0 0 8px #10b981',
-            }}
-          />
         </button>
       </div>
     </>
