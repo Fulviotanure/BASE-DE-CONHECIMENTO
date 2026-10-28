@@ -39,9 +39,9 @@ interface Message {
 
 /**
  * Ilustração SVG do Clips (Clippy 3D Clay) - Modelo em argila/plasticina 3D estilizado,
- * fiel ao design moderno da Microsoft: olhos esféricos gigantes com pupilas escuras,
- * sobrancelhas expressivas em formato de cápsula de argila e arame tubular fosco.
- * Inclui rastreamento de olhar em tempo real pelo mouse e ciclo autônomo de piscadas.
+ * fiel ao design moderno da Microsoft: arame tubular perfeitamente alinhado,
+ * olhos esféricos volumosos com pupilas escuras, brilho cativante ("catchlight"),
+ * sobrancelhas expressivas e física de olhar suave a 120 FPS via requestAnimationFrame.
  */
 const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?: boolean }> = ({
   size = 64,
@@ -49,18 +49,24 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
   trackMouse = true,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 });
+  const leftPupilRef = useRef<SVGGElement | null>(null);
+  const rightPupilRef = useRef<SVGGElement | null>(null);
+  const rafIdRef = useRef<number | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
 
-  // Rastreamento suave do cursor do mouse pela tela
+  // Rastreamento de alta performance a 120 FPS via Hardware Accelerated Transform (Zero React Re-renders!)
   useEffect(() => {
     if (!trackMouse) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+
+    const onMouseMove = (e: MouseEvent) => {
       if (!svgRef.current) return;
       const rect = svgRef.current.getBoundingClientRect();
-      // Ponto focal central dos olhos do Clips na tela (centro entre os dois olhos)
-      const eyeCenterX = rect.left + rect.width * 0.50;
+      const eyeCenterX = rect.left + rect.width * 0.49;
       const eyeCenterY = rect.top + rect.height * 0.36;
 
       const dx = e.clientX - eyeCenterX;
@@ -68,46 +74,71 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       const angle = Math.atan2(dy, dx);
       const dist = Math.hypot(dx, dy);
 
-      // Raio máximo de alcance da pupila (escala do viewBox 1024x1024)
-      const maxRadius = 26;
-      const factor = Math.min(dist / 90, 1);
-      const px = Math.cos(angle) * maxRadius * factor;
-      const py = Math.sin(angle) * maxRadius * factor;
+      // Raio máximo de alcance da pupila (escala do viewBox)
+      const maxRadius = 24;
+      const factor = Math.min(dist / 80, 1);
+      targetX = Math.cos(angle) * maxRadius * factor;
+      targetY = Math.sin(angle) * maxRadius * factor;
 
-      setPupilOffset({ x: px, y: py });
+      if (!rafIdRef.current) {
+        rafIdRef.current = requestAnimationFrame(animatePupils);
+      }
     };
 
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    const animatePupils = () => {
+      // Interpolação suave (LERP) para movimento orgânico e fluido
+      currentX += (targetX - currentX) * 0.38;
+      currentY += (targetY - currentY) * 0.38;
+
+      const transformStr = `translate3d(${currentX.toFixed(2)}px, ${currentY.toFixed(2)}px, 0)`;
+      if (leftPupilRef.current) leftPupilRef.current.style.transform = transformStr;
+      if (rightPupilRef.current) rightPupilRef.current.style.transform = transformStr;
+
+      if (Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) {
+        rafIdRef.current = requestAnimationFrame(animatePupils);
+      } else {
+        rafIdRef.current = null;
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    };
   }, [trackMouse]);
 
-  // Ciclo autônomo de piscadas naturais dos olhos (com chance de piscada dupla)
+  // Ciclo autônomo de piscadas: começa rápido (700ms) e pisca regularmente a cada 2.0s a 3.5s
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    const scheduleNextBlink = () => {
-      const delay = 3000 + Math.random() * 2600;
-      timeoutId = setTimeout(() => {
-        setIsBlinking(true);
-        setTimeout(() => {
-          setIsBlinking(false);
-          // 25% de chance de piscada dupla curiosa
-          if (Math.random() < 0.25) {
+    const doBlink = () => {
+      setIsBlinking(true);
+      setTimeout(() => {
+        setIsBlinking(false);
+        // 30% de chance de piscada dupla charmosa
+        if (Math.random() < 0.3) {
+          setTimeout(() => {
+            setIsBlinking(true);
             setTimeout(() => {
-              setIsBlinking(true);
-              setTimeout(() => {
-                setIsBlinking(false);
-                scheduleNextBlink();
-              }, 110);
-            }, 110);
-          } else {
-            scheduleNextBlink();
-          }
-        }, 130);
-      }, delay);
+              setIsBlinking(false);
+              scheduleNext();
+            }, 90);
+          }, 90);
+        } else {
+          scheduleNext();
+        }
+      }, 100);
     };
 
-    scheduleNextBlink();
+    const scheduleNext = () => {
+      const delay = 2000 + Math.random() * 1500;
+      timeoutId = setTimeout(doBlink, delay);
+    };
+
+    // Começa a piscar logo após carregar na tela
+    timeoutId = setTimeout(doBlink, 700);
+
     return () => clearTimeout(timeoutId);
   }, []);
 
@@ -123,71 +154,71 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       xmlns="http://www.w3.org/2000/svg"
       style={{
         overflow: 'visible',
-        filter: 'drop-shadow(0 10px 20px rgba(15, 23, 42, 0.28))',
+        filter: 'drop-shadow(0 8px 16px rgba(15, 23, 42, 0.22))',
       }}
     >
       <defs>
-        {/* Filtro de sombra suave para as esferas dos olhos sobre o arame */}
-        <filter id="clayEyeShadow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="-4" dy="16" stdDeviation="14" floodColor="rgba(15, 23, 42, 0.42)" />
+        {/* Sombra suave e leve para as esferas dos olhos */}
+        <filter id="clayEyeShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="-3" dy="12" stdDeviation="8" floodColor="rgba(15, 23, 42, 0.32)" />
         </filter>
 
-        {/* Filtro de sombra suave para as sobrancelhas de argila */}
-        <filter id="clayBrowShadow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="-2" dy="10" stdDeviation="8" floodColor="rgba(15, 23, 42, 0.45)" />
+        {/* Sombra suave e leve para as sobrancelhas de argila */}
+        <filter id="clayBrowShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="-2" dy="8" stdDeviation="6" floodColor="rgba(15, 23, 42, 0.35)" />
         </filter>
 
-        {/* Gradiente do Arame de Argila 3D (Textura cilíndrica fosca idêntica à foto) */}
+        {/* Gradiente do Arame de Argila 3D (Textura cilíndrica fosca e elegante) */}
         <linearGradient id="clippyClayWire" x1="300" y1="100" x2="700" y2="920" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#b8bcc4" />
-          <stop offset="25%" stopColor="#9fa4ac" />
-          <stop offset="50%" stopColor="#898f97" />
-          <stop offset="75%" stopColor="#797f87" />
-          <stop offset="100%" stopColor="#636870" />
+          <stop offset="0%" stopColor="#c0c4cc" />
+          <stop offset="25%" stopColor="#a3a8b0" />
+          <stop offset="50%" stopColor="#8d939c" />
+          <stop offset="75%" stopColor="#7c828b" />
+          <stop offset="100%" stopColor="#666b74" />
         </linearGradient>
 
         {/* Brilho tubular difuso ao longo do arame */}
         <linearGradient id="clippyClaySpecular" x1="280" y1="80" x2="680" y2="900" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.70)" />
-          <stop offset="35%" stopColor="rgba(255, 255, 255, 0.40)" />
-          <stop offset="70%" stopColor="rgba(255, 255, 255, 0.18)" />
-          <stop offset="100%" stopColor="rgba(255, 255, 255, 0.50)" />
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.75)" />
+          <stop offset="35%" stopColor="rgba(255, 255, 255, 0.45)" />
+          <stop offset="70%" stopColor="rgba(255, 255, 255, 0.20)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0.55)" />
         </linearGradient>
 
         {/* Gradiente esférico do Olho Esquerdo (Globo ocular de argila branca) */}
         <radialGradient id="clayLeftEye" cx="35%" cy="32%" r="68%">
           <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="55%" stopColor="#f4f6f8" />
-          <stop offset="82%" stopColor="#dce1e7" />
+          <stop offset="55%" stopColor="#f5f7f9" />
+          <stop offset="82%" stopColor="#dde2e8" />
           <stop offset="100%" stopColor="#b8c0ca" />
         </radialGradient>
 
         {/* Gradiente esférico do Olho Direito */}
         <radialGradient id="clayRightEye" cx="38%" cy="35%" r="68%">
           <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="55%" stopColor="#f4f6f8" />
-          <stop offset="82%" stopColor="#dce1e7" />
+          <stop offset="55%" stopColor="#f5f7f9" />
+          <stop offset="82%" stopColor="#dde2e8" />
           <stop offset="100%" stopColor="#b8c0ca" />
         </radialGradient>
 
         {/* Gradiente da Pupila de argila chocolate escura */}
         <radialGradient id="clayPupil" cx="40%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#463437" />
+          <stop offset="0%" stopColor="#483639" />
           <stop offset="60%" stopColor="#3c292b" />
           <stop offset="100%" stopColor="#281b1d" />
         </radialGradient>
 
         {/* Gradiente da ponta arredondada esférica do arame */}
         <radialGradient id="clayCap" cx="38%" cy="32%" r="70%">
-          <stop offset="0%" stopColor="#c4c8cf" />
-          <stop offset="60%" stopColor="#898f97" />
+          <stop offset="0%" stopColor="#c8ccd4" />
+          <stop offset="60%" stopColor="#8d939c" />
           <stop offset="100%" stopColor="#585d64" />
         </radialGradient>
       </defs>
 
-      {/* 1. CORPO DO CLIPS (Arame Tubular de Argila 3D) */}
+      {/* 1. CORPO DO CLIPS (Arame Tubular Perfeitamente Alinhado e Reto - Sem Deformações) */}
       <path
-        d="M 458 486 L 460 670 C 460 730, 490 754, 540 754 C 580 754, 592 725, 592 660 L 587 350 L 632 150 C 640 100, 590 75, 525 75 C 450 75, 385 110, 365 210 L 345 550 C 345 640, 368 700, 404 800 C 440 910, 490 954, 550 954 C 620 954, 680 910, 701 800 L 694 550 C 694 500, 710 470, 727 451"
+        d="M 465 470 L 465 690 C 465 755, 585 755, 585 690 L 585 180 C 585 75, 340 75, 340 180 L 340 800 C 340 950, 705 950, 705 800 L 705 530 C 705 490, 725 465, 735 450"
         stroke="url(#clippyClayWire)"
         strokeWidth="48"
         strokeLinecap="round"
@@ -197,7 +228,7 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
 
       {/* Linha de reflexo / volume 3D no arame */}
       <path
-        d="M 458 486 L 460 670 C 460 730, 490 754, 540 754 C 580 754, 592 725, 592 660 L 587 350 L 632 150 C 640 100, 590 75, 525 75 C 450 75, 385 110, 365 210 L 345 550 C 345 640, 368 700, 404 800 C 440 910, 490 954, 550 954 C 620 954, 680 910, 701 800 L 694 550 C 694 500, 710 470, 727 451"
+        d="M 465 470 L 465 690 C 465 755, 585 755, 585 690 L 585 180 C 585 75, 340 75, 340 180 L 340 800 C 340 950, 705 950, 705 800 L 705 530 C 705 490, 725 465, 735 450"
         stroke="url(#clippyClaySpecular)"
         strokeWidth="14"
         strokeLinecap="round"
@@ -207,78 +238,70 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       />
 
       {/* Ponteiras esféricas 3D nas extremidades do arame */}
-      <circle cx={458} cy={486} r={23.5} fill="url(#clayCap)" />
-      <circle cx={727} cy={451} r={23.5} fill="url(#clayCap)" />
+      <circle cx={465} cy={470} r={23.5} fill="url(#clayCap)" />
+      <circle cx={735} cy={450} r={23.5} fill="url(#clayCap)" />
 
-      {/* 2. OLHO ESQUERDO (Globo de argila com sombra sobre o arame e pupila dinâmica) */}
+      {/* 2. OLHO ESQUERDO (Globo de argila com sombra e pupila com brilho cativante) */}
       <g filter="url(#clayEyeShadow)">
         <g
           style={{
-            transformOrigin: '389px 363px',
+            transformOrigin: '380px 360px',
             transform: isBlinking ? 'scaleY(0.08)' : 'scaleY(1)',
-            transition: isBlinking ? 'transform 0.08s ease-out' : 'transform 0.12s ease-in',
+            transition: isBlinking ? 'transform 0.07s ease-out' : 'transform 0.10s ease-in',
           }}
         >
-          <ellipse cx={389} cy={363} rx={104} ry={110} fill="url(#clayLeftEye)" />
-          {/* Pupila Esquerda Gigante (Segue o cursor do mouse) */}
-          <ellipse
-            cx={387}
-            cy={323}
-            rx={64}
-            ry={66}
-            fill="url(#clayPupil)"
-            style={{
-              transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
-              transition: 'transform 0.06s ease-out',
-            }}
-          />
+          <ellipse cx={380} cy={360} rx={105} ry={110} fill="url(#clayLeftEye)" />
+          {/* Pupila Esquerda Gigante (GPU transform + Brilhos) */}
+          <g ref={leftPupilRef} style={{ willChange: 'transform' }}>
+            <ellipse cx={380} cy={325} rx={64} ry={66} fill="url(#clayPupil)" />
+            {/* Brilho principal no olho (Catchlight) */}
+            <circle cx={362} cy={308} r={14} fill="#ffffff" />
+            {/* Brilho secundário suave */}
+            <circle cx={396} cy={340} r={7} fill="#ffffff" opacity={0.75} />
+          </g>
         </g>
       </g>
 
-      {/* 3. OLHO DIREITO (Globo de argila levemente sobreposto e pupila gigante) */}
+      {/* 3. OLHO DIREITO (Globo de argila sobreposto e pupila com brilho) */}
       <g filter="url(#clayEyeShadow)">
         <g
           style={{
-            transformOrigin: '604px 400px',
+            transformOrigin: '585px 395px',
             transform: isBlinking ? 'scaleY(0.08)' : 'scaleY(1)',
-            transition: isBlinking ? 'transform 0.08s ease-out' : 'transform 0.12s ease-in',
+            transition: isBlinking ? 'transform 0.07s ease-out' : 'transform 0.10s ease-in',
           }}
         >
-          <ellipse cx={604} cy={400} rx={110} ry={114} fill="url(#clayRightEye)" />
-          {/* Pupila Direita Gigante (Segue o cursor do mouse) */}
-          <ellipse
-            cx={603}
-            cy={362}
-            rx={78}
-            ry={80}
-            fill="url(#clayPupil)"
-            style={{
-              transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
-              transition: 'transform 0.06s ease-out',
-            }}
-          />
+          <ellipse cx={585} cy={395} rx={110} ry={114} fill="url(#clayRightEye)" />
+          {/* Pupila Direita Gigante (GPU transform + Brilhos) */}
+          <g ref={rightPupilRef} style={{ willChange: 'transform' }}>
+            <ellipse cx={585} cy={360} rx={78} ry={80} fill="url(#clayPupil)" />
+            {/* Brilho principal no olho direito */}
+            <circle cx={563} cy={340} r={16.5} fill="#ffffff" />
+            {/* Brilho secundário suave */}
+            <circle cx={604} cy={378} r={8} fill="#ffffff" opacity={0.75} />
+          </g>
         </g>
       </g>
 
-      {/* 4. SOBRANCELHAS DE ARGILA (Formato cápsula/salsicha 3D idêntico à imagem de referência) */}
-      {/* Sobrancelha Esquerda (Suavemente curvada e arqueada sobre o olho esquerdo) */}
+      {/* 4. SOBRANCELHAS DE ARGILA (Formato cápsula/salsicha 3D) */}
+      {/* Sobrancelha Esquerda */}
       <g filter="url(#clayBrowShadow)">
         <g
           style={{
-            transformOrigin: '420px 157px',
-            transform: isBlinking ? 'translateY(22px)' : (isHappy ? 'translateY(-10px) rotate(-3deg)' : 'translateY(0)'),
+            transformOrigin: '380px 160px',
+            transform: isBlinking ? 'translateY(18px)' : (isHappy ? 'translateY(-10px) rotate(-3deg)' : 'translateY(0)'),
             transition: 'transform 0.1s ease-out',
           }}
         >
           <path
-            d="M 362 166 Q 420 148 480 156"
+            d="M 320 168 Q 380 150 440 158"
             stroke="#3c292b"
-            strokeWidth="48"
+            strokeWidth="46"
             strokeLinecap="round"
             fill="none"
           />
           <path
-            d="M 372 160 Q 420 144 470 152"
+            d="M 330 162 Q 380 146 430 154"
             stroke="rgba(255, 255, 255, 0.22)"
             strokeWidth="12"
             strokeLinecap="round"
@@ -287,24 +310,24 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
         </g>
       </g>
 
-      {/* Sobrancelha Direita (Inclinada para baixo à direita, olhar característico do Clippy) */}
+      {/* Sobrancelha Direita (Inclinada para baixo à direita) */}
       <g filter="url(#clayBrowShadow)">
         <g
           style={{
-            transformOrigin: '643px 240px',
-            transform: isBlinking ? 'translateY(22px)' : (isHappy ? 'translateY(-12px) rotate(4deg)' : 'translateY(0)'),
+            transformOrigin: '585px 235px',
+            transform: isBlinking ? 'translateY(18px)' : (isHappy ? 'translateY(-12px) rotate(4deg)' : 'translateY(0)'),
             transition: 'transform 0.1s ease-out',
           }}
         >
           <path
-            d="M 590 206 Q 644 238 698 274"
+            d="M 530 205 Q 585 235 645 272"
             stroke="#3c292b"
-            strokeWidth="50"
+            strokeWidth="48"
             strokeLinecap="round"
             fill="none"
           />
           <path
-            d="M 598 202 Q 644 233 690 268"
+            d="M 538 201 Q 585 230 637 266"
             stroke="rgba(255, 255, 255, 0.22)"
             strokeWidth="12"
             strokeLinecap="round"

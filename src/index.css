@@ -942,13 +942,10 @@ figure.article-video-figure,
    ========================================================================== */
 @keyframes botFloat {
   0%, 100% {
-    transform: translateY(0) rotate(0deg);
+    transform: translateY(0);
   }
-  30% {
-    transform: translateY(-8px) rotate(-1.5deg);
-  }
-  65% {
-    transform: translateY(-3px) rotate(1.2deg);
+  50% {
+    transform: translateY(-7px);
   }
 }
 
