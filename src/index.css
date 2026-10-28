@@ -1269,6 +1269,23 @@ figure[data-align="right"] {
   background: var(--color-primary-hover, #4ea370);
 }
 
+/* ==========================================================================
+   Remoção Definitiva de Cabeçalho e Elementos Legados do Movidesk
+   ========================================================================== */
+.md-article-header,
+header.md-article-header,
+.md-article-title,
+.read-info,
+.created-info,
+.updated-info,
+.satisfaction-survey-container,
+#last-visited-articles,
+#rating-box,
+#rating-box-form {
+  display: none !important;
+}
+
+
 
 
 

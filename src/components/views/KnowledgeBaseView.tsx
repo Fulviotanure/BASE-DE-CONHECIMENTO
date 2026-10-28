@@ -39,6 +39,7 @@ import { CategoryIcon, getCategoryThemeColors } from '../../utils/categoryIcons'
 import type { Article } from '../../types';
 import { INITIAL_ARTICLES } from '../../data/initialSeed';
 import { useArticleImageFallback } from '../../utils/imageFallback';
+import { sanitizeArticleHtml } from '../../utils/sanitizeArticleHtml';
 
 interface KnowledgeBaseViewProps {
   onOpenNewArticle: () => void;
@@ -454,7 +455,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({
               width: '100%',
               boxShadow: 'var(--shadow-sm)',
             }}
-            dangerouslySetInnerHTML={{ __html: selectedArticle.contentHtml }}
+            dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(selectedArticle.contentHtml) }}
           />
 
           {/* Rodapé de Feedback: Joinha & Deslike com Contagem em Tempo Real */}

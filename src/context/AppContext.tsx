@@ -17,6 +17,7 @@ import type {
 } from '../types';
 import { sendArticleSubmittedEmail, sendArticleNeedsAdjustmentEmail, sendArticleApprovedEmail, getSentEmails, clearSentEmails } from '../services/emailService';
 import { calculateUserGamification } from '../services/gamificationService';
+import { sanitizeArticleHtml } from '../utils/sanitizeArticleHtml';
 import { INITIAL_USERS, INITIAL_ARTICLES, INITIAL_CATEGORIES, INITIAL_TOOLS } from '../data/initialSeed';
 import { getSavedFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, isFirebaseConfigured, auth, db, type FirebaseConfig } from '../services/firebase';
 import { updateProfile } from 'firebase/auth';
@@ -393,7 +394,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [articles, setArticles] = useState<Article[]>(() => {
     const deletedArticleIds = getDeletedArticleIds();
-    const saved = localStorage.getItem('conciliador_articles_v9');
+    const saved = localStorage.getItem('conciliador_articles_v10');
     let loaded = INITIAL_ARTICLES;
     if (saved) {
       try {
@@ -406,18 +407,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch {}
     }
 
-    const sanitizedLoaded = loaded.map((art) => {
-      if (art.contentHtml && art.contentHtml.includes('s3.amazonaws.com/movidesk-files')) {
-        return {
-          ...art,
-          contentHtml: art.contentHtml.replace(
-            /https?:\/\/s3\.amazonaws\.com\/movidesk-files\/([A-Za-z0-9_-]+)(?:[^"'\s>]*)/g,
-            '/article-images/$1.png'
-          ),
-        };
-      }
-      return art;
-    });
+    const sanitizedLoaded = loaded.map((art) => ({
+      ...art,
+      contentHtml: sanitizeArticleHtml(art.contentHtml),
+    }));
 
     const enriched = sanitizedLoaded
       .filter((art) => !deletedArticleIds.has(art.id))
@@ -434,7 +427,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return art;
     });
 
-    localStorage.setItem('conciliador_articles_v9', JSON.stringify(enriched));
+    localStorage.setItem('conciliador_articles_v10', JSON.stringify(enriched));
     return enriched;
   });
 
@@ -444,7 +437,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('conciliador_articles_v9', JSON.stringify(articles));
+    localStorage.setItem('conciliador_articles_v10', JSON.stringify(articles));
   }, [articles]);
 
   const [tools, setTools] = useState<ToolItem[]>(() => {
@@ -626,13 +619,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const filtered = remoteArticles.filter((a) => !deletedArticleIds.has(a.id));
       let hasFixedS3 = false;
       const sanitized = filtered.map((a) => {
-        if (a.contentHtml && a.contentHtml.includes('s3.amazonaws.com/movidesk-files')) {
-          hasFixedS3 = true;
-          const fixedHtml = a.contentHtml.replace(
-            /https?:\/\/s3\.amazonaws\.com\/movidesk-files\/([A-Za-z0-9_-]+)(?:[^"'\s>]*)/g,
-            '/article-images/$1.png'
-          );
-          const updatedArt = { ...a, contentHtml: fixedHtml };
+        const cleanedHtml = sanitizeArticleHtml(a.contentHtml);
+        const hasChanged = cleanedHtml !== a.contentHtml;
+        if (hasChanged) {
+          const updatedArt = { ...a, contentHtml: cleanedHtml };
           if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br') {
             saveArticleToFirestore(updatedArt).catch(() => {});
           }
@@ -649,7 +639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const allCombined = [...sanitized, ...missingInitial];
       setArticles(allCombined);
-      localStorage.setItem('conciliador_articles_v9', JSON.stringify(allCombined));
+      localStorage.setItem('conciliador_articles_v10', JSON.stringify(allCombined));
 
       // Se o usuário logado for administrador, sincroniza os artigos faltantes no Firestore
       if (
@@ -1728,7 +1718,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return art;
       });
       try {
-        localStorage.setItem('conciliador_articles_v9', JSON.stringify(next));
+        localStorage.setItem('conciliador_articles_v10', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -1834,7 +1824,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return art;
       });
       try {
-        localStorage.setItem('conciliador_articles_v9', JSON.stringify(next));
+        localStorage.setItem('conciliador_articles_v10', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -1886,12 +1876,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 4. Atualiza imediatamente o localStorage para não reaparecer no refresh
     try {
-      const saved = localStorage.getItem('conciliador_articles_v9');
+      const saved = localStorage.getItem('conciliador_articles_v10');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           const filtered = parsed.filter((c: any) => c.id !== articleId);
-          localStorage.setItem('conciliador_articles_v9', JSON.stringify(filtered));
+          localStorage.setItem('conciliador_articles_v10', JSON.stringify(filtered));
         }
       }
     } catch {}
@@ -2101,7 +2091,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       try {
-        localStorage.setItem('conciliador_articles_v9', JSON.stringify(next));
+        localStorage.setItem('conciliador_articles_v10', JSON.stringify(next));
       } catch {}
 
       return next;
