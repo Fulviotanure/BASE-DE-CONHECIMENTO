@@ -38,126 +38,216 @@ interface Message {
 }
 
 /**
- * Ilustração SVG do ConciliBot - Personagem simpático com animações de antena, olhos e flutuação
+ * Ilustração SVG do Clips (Clippy) - Personagem nostálgico com arame metálico,
+ * olhos animados que piscam naturalmente e pupilas que seguem o cursor do mouse em tempo real!
  */
-const BotAvatarSVG: React.FC<{ size?: number; isHappy?: boolean }> = ({ size = 60, isHappy = false }) => {
+const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?: boolean }> = ({
+  size = 60,
+  isHappy = false,
+  trackMouse = true,
+}) => {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 });
+  const [isBlinking, setIsBlinking] = useState(false);
+
+  // Rastreamento suave do cursor do mouse pela tela
+  useEffect(() => {
+    if (!trackMouse) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      // Ponto focal central dos olhos do Clips na tela
+      const eyeCenterX = rect.left + rect.width * 0.485;
+      const eyeCenterY = rect.top + rect.height * 0.40;
+
+      const dx = e.clientX - eyeCenterX;
+      const dy = e.clientY - eyeCenterY;
+      const angle = Math.atan2(dy, dx);
+      const dist = Math.hypot(dx, dy);
+
+      // Raio máximo de alcance da pupila dentro da esclera branca (3.4px)
+      const maxRadius = 3.4;
+      const factor = Math.min(dist / 50, 1);
+      const px = Math.cos(angle) * maxRadius * factor;
+      const py = Math.sin(angle) * maxRadius * factor;
+
+      setPupilOffset({ x: px, y: py });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [trackMouse]);
+
+  // Ciclo autônomo de piscadas naturais dos olhos (com chance de piscada dupla)
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const scheduleNextBlink = () => {
+      const delay = 3200 + Math.random() * 2500;
+      timeoutId = setTimeout(() => {
+        setIsBlinking(true);
+        setTimeout(() => {
+          setIsBlinking(false);
+          // 25% de chance de uma piscada dupla rápida e curiosa
+          if (Math.random() < 0.25) {
+            setTimeout(() => {
+              setIsBlinking(true);
+              setTimeout(() => {
+                setIsBlinking(false);
+                scheduleNextBlink();
+              }, 120);
+            }, 120);
+          } else {
+            scheduleNextBlink();
+          }
+        }, 140);
+      }, delay);
+    };
+
+    scheduleNextBlink();
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   return (
     <svg
+      ref={svgRef}
       width={size}
-      height={size}
-      viewBox="0 0 100 100"
+      height={size * 1.1}
+      viewBox="0 0 100 110"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ overflow: 'visible', filter: 'drop-shadow(0 6px 12px rgba(92, 183, 128, 0.35))' }}
+      style={{
+        overflow: 'visible',
+        filter: 'drop-shadow(0 6px 14px rgba(15, 23, 42, 0.3)) drop-shadow(0 0 10px rgba(92, 183, 128, 0.2))',
+      }}
     >
-      {/* Halo de Energia / Glow sutil */}
-      <circle cx="50" cy="54" r="38" fill="rgba(92, 183, 128, 0.12)" />
+      <defs>
+        {/* Gradiente cromado / metálico do arame */}
+        <linearGradient id="clippyWireGrad" x1="25" y1="20" x2="75" y2="90" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="20%" stopColor="#e2e8f0" />
+          <stop offset="45%" stopColor="#94a3b8" />
+          <stop offset="70%" stopColor="#cbd5e1" />
+          <stop offset="90%" stopColor="#64748b" />
+          <stop offset="100%" stopColor="#475569" />
+        </linearGradient>
 
-      {/* Antena */}
-      <line x1="50" y1="20" x2="50" y2="10" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" />
-      {/* Luz da Antena (Pulsante) */}
-      <circle
-        cx="50"
-        cy="9"
-        r="5"
-        fill="#5cb780"
-        style={{
-          animation: 'botAntennaPulse 1.8s ease-in-out infinite',
-        }}
-      />
-      <circle cx="50" cy="9" r="2.5" fill="#ffffff" />
+        {/* Brilho especular ao longo do arame */}
+        <linearGradient id="clippyHighlightGrad" x1="20" y1="15" x2="70" y2="85" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.95)" />
+          <stop offset="50%" stopColor="rgba(255,255,255,0.25)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0.85)" />
+        </linearGradient>
 
-      {/* Fones / Orelhinhas tecnológicas */}
-      <rect x="14" y="44" width="7" height="18" rx="3.5" fill="#38bdf8" />
-      <rect x="79" y="44" width="7" height="18" rx="3.5" fill="#38bdf8" />
-      <circle cx="17.5" cy="53" r="2" fill="#ffffff" />
-      <circle cx="82.5" cy="53" r="2" fill="#ffffff" />
+        {/* Sombra sutil sob os olhos */}
+        <filter id="clippyEyeShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="rgba(15,23,42,0.3)" />
+        </filter>
+      </defs>
 
-      {/* Cabeça do Robô */}
-      <rect
-        x="20"
-        y="22"
-        width="60"
-        height="56"
-        rx="22"
-        fill="url(#botHeadGradient)"
-        stroke="#5cb780"
-        strokeWidth="3"
-      />
+      {/* Aura suave de presença esmeralda / Conciliador Contábil */}
+      <ellipse cx="49" cy="55" rx="38" ry="44" fill="rgba(92, 183, 128, 0.12)" />
 
-      {/* Visor Digital / Tela Espelhada */}
-      <rect
-        x="28"
-        y="34"
-        width="44"
-        height="32"
-        rx="12"
-        fill="#0f172a"
-        stroke="rgba(56, 189, 248, 0.4)"
-        strokeWidth="1.5"
-      />
-
-      {/* Brilho no Visor */}
+      {/* CORPO DO CLIPS (Arame de metal dobrado clássico) */}
       <path
-        d="M32 38 C40 38, 48 40, 52 42"
-        stroke="rgba(255, 255, 255, 0.25)"
-        strokeWidth="2"
+        d="M 55 45 L 55 74 A 6.5 6.5 0 0 1 42 74 L 42 27 A 15 15 0 0 1 72 27 L 72 82 A 22 22 0 0 1 28 82 L 28 42"
+        stroke="url(#clippyWireGrad)"
+        strokeWidth="7"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
 
-      {/* Olhos Digitais Expressivos */}
+      {/* Linha de reflexo / brilho 3D no metal */}
+      <path
+        d="M 55 45 L 55 74 A 6.5 6.5 0 0 1 42 74 L 42 27 A 15 15 0 0 1 72 27 L 72 82 A 22 22 0 0 1 28 82 L 28 42"
+        stroke="url(#clippyHighlightGrad)"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.85"
+      />
+
+      {/* GRUPO DOS OLHOS (Com animação de escala no piscar) */}
+      <g
+        style={{
+          transformOrigin: '48.5px 40.5px',
+          transform: isBlinking ? 'scaleY(0.06)' : 'scaleY(1)',
+          transition: isBlinking ? 'transform 0.08s ease-out' : 'transform 0.12s ease-in',
+        }}
+      >
+        {/* Olho Esquerdo (Esclera) */}
+        <ellipse
+          cx="40"
+          cy="41"
+          rx="9"
+          ry="12.5"
+          fill="#ffffff"
+          stroke="#0f172a"
+          strokeWidth="1.8"
+          filter="url(#clippyEyeShadow)"
+        />
+
+        {/* Olho Direito (Esclera) */}
+        <ellipse
+          cx="57"
+          cy="40"
+          rx="9"
+          ry="12.5"
+          fill="#ffffff"
+          stroke="#0f172a"
+          strokeWidth="1.8"
+          filter="url(#clippyEyeShadow)"
+        />
+
+        {/* Pupila Esquerda (Segue o Mouse) */}
+        <g style={{ transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)` }}>
+          <circle cx="41" cy="41" r="4.3" fill="#0f172a" />
+          <circle cx="39.6" cy="39.6" r="1.5" fill="#ffffff" />
+          <circle cx="42.5" cy="42.5" r="0.7" fill="#ffffff" opacity="0.8" />
+        </g>
+
+        {/* Pupila Direita (Segue o Mouse) */}
+        <g style={{ transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)` }}>
+          <circle cx="58" cy="40" r="4.3" fill="#0f172a" />
+          <circle cx="56.6" cy="38.6" r="1.5" fill="#ffffff" />
+          <circle cx="59.5" cy="41.5" r="0.7" fill="#ffffff" opacity="0.8" />
+        </g>
+      </g>
+
+      {/* SOBRANCELHAS DO CLIPS (Expressivas e dinâmicas) */}
       {isHappy ? (
-        // Olhos sorrindo em arco alegre
+        // Sobrancelhas arqueadas e felizes
         <>
-          <path
-            d="M36 50 C38 45, 44 45, 46 50"
-            stroke="#5cb780"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path
-            d="M54 50 C56 45, 62 45, 64 50"
-            stroke="#5cb780"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-            fill="none"
-          />
+          <path d="M 32 23 Q 40 17 47 22" stroke="#0f172a" strokeWidth="3.2" strokeLinecap="round" fill="none" />
+          <path d="M 51 21 Q 59 13 68 18" stroke="#0f172a" strokeWidth="3.4" strokeLinecap="round" fill="none" />
         </>
       ) : (
-        // Olhos com brilho e animação de piscar
-        <g style={{ transformOrigin: '50% 50%', animation: 'botEyeBlink 4.2s infinite' }}>
-          <circle cx="41" cy="48" r="4.5" fill="#5cb780" />
-          <circle cx="42.5" cy="46.5" r="1.5" fill="#ffffff" />
-
-          <circle cx="59" cy="48" r="4.5" fill="#5cb780" />
-          <circle cx="60.5" cy="46.5" r="1.5" fill="#ffffff" />
-        </g>
+        // Sobrancelhas curiosas clássicas do Clippy (direita levantada)
+        <>
+          <path d="M 32 27 Q 40 21 47 26" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" fill="none" />
+          <path d="M 51 25 Q 59 17 68 22" stroke="#0f172a" strokeWidth="3.2" strokeLinecap="round" fill="none" />
+        </>
       )}
 
-      {/* Boquinha digital / Led Sorriso */}
-      <path
-        d="M45 58 Q50 62 55 58"
-        stroke="#38bdf8"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        fill="none"
-      />
+      {/* Bochechinhas rosadas fofas */}
+      <circle cx="29" cy="50" r="3.2" fill="rgba(244, 114, 182, 0.45)" />
+      <circle cx="68" cy="49" r="3.2" fill="rgba(244, 114, 182, 0.45)" />
 
-      {/* Bochechinhas tecnológicas sutis */}
-      <circle cx="34" cy="54" r="2" fill="rgba(244, 114, 182, 0.6)" />
-      <circle cx="66" cy="54" r="2" fill="rgba(244, 114, 182, 0.6)" />
+      {/* Boquinha sorrindo */}
+      {isHappy ? (
+        <path d="M 42 55 Q 48.5 63 55 55" stroke="#0f172a" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+      ) : (
+        <path d="M 43 56 Q 48.5 60 54 56" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" fill="none" />
+      )}
 
-      {/* Detalhes de Conector / Base */}
-      <rect x="42" y="78" width="16" height="5" rx="2.5" fill="#38bdf8" opacity="0.8" />
-
-      {/* Gradientes */}
-      <defs>
-        <linearGradient id="botHeadGradient" x1="20" y1="22" x2="80" y2="78" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#1e293b" />
-          <stop offset="1" stopColor="#0f172a" />
-        </linearGradient>
-      </defs>
+      {/* Gravatinha Borboleta Verde Conciliador (Toque contábil exclusivo!) */}
+      <g transform="translate(48.5, 78)">
+        <path d="M -2 0 L -9 -5 L -9 5 Z" fill="#10b981" stroke="#047857" strokeWidth="1" strokeLinejoin="round" />
+        <path d="M 2 0 L 9 -5 L 9 5 Z" fill="#10b981" stroke="#047857" strokeWidth="1" strokeLinejoin="round" />
+        <circle cx="0" cy="0" r="2.8" fill="#5cb780" stroke="#047857" strokeWidth="0.8" />
+        <circle cx="-0.8" cy="-0.8" r="0.9" fill="#ffffff" opacity="0.9" />
+      </g>
     </svg>
   );
 };
@@ -275,7 +365,7 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
       {
         id: 'welcome-msg',
         sender: 'bot',
-        text: `Olá! Eu sou o **ConciliBot** 🤖✨, seu assistente inteligente na Base de Conhecimento do Conciliador Contábil!\n\nEstou aqui para tirar dúvidas sobre processos, regras de conciliação e rotinas da equipe.\n\n**O que posso te ajudar a resolver hoje?**`,
+        text: `Olá! Eu sou o **Clips** 📎✨, seu assistente inteligente na Base de Conhecimento do Conciliador Contábil!\n\nEstou aqui para tirar dúvidas sobre processos, manuais, regras de conciliação e rotinas da equipe.\n\n**O que posso te ajudar a resolver hoje?**`,
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         quickReplies: isInternal ? [
           'Como conciliar extrato bancário?',
@@ -522,7 +612,7 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
     // 2. Tratamento para identidade do robô
     if (cleanQuery.includes('quem é você') || cleanQuery.includes('quem e voce') || cleanQuery.includes('seu nome') || cleanQuery.includes('o que você faz')) {
       return {
-        text: `Eu sou o **ConciliBot** 🤖, o assistente virtual com inteligência artificial integrado à Base de Conhecimento do Conciliador Contábil!\n\nMinha missão é analisar todos os manuais oficiais da nossa base para responder suas dúvidas com precisão, explicar o passo a passo e indicar os artigos de referência.`,
+        text: `Eu sou o **Clips** 📎✨, o assistente virtual com inteligência artificial integrado à Base de Conhecimento do Conciliador Contábil!\n\nInspirado no clássico ajudante do Windows, minha missão é analisar todos os manuais oficiais da nossa base para responder suas dúvidas com precisão, explicar o passo a passo e indicar os artigos de referência.`,
         articles: [],
         quickReplies: defaultQuickReplies,
       };
@@ -877,12 +967,12 @@ ${contextArticles}`;
                   justifyContent: 'center',
                 }}
               >
-                <BotAvatarSVG size={32} isHappy />
+                <ClippyAvatarSVG size={32} isHappy />
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <strong style={{ fontSize: '0.92rem', color: 'var(--text-main)', fontWeight: 800 }}>
-                    ConciliBot IA
+                    ConciliClips IA
                   </strong>
                   {isAdmin ? (
                     <span
@@ -1472,7 +1562,7 @@ ${contextArticles}`;
                       >
                         {isBot && (
                           <div style={{ flexShrink: 0, marginTop: '2px' }}>
-                            <BotAvatarSVG size={26} />
+                            <ClippyAvatarSVG size={26} trackMouse={false} />
                           </div>
                         )}
 
@@ -1692,7 +1782,7 @@ ${contextArticles}`;
                 {/* INDICADOR DE DIGITAÇÃO / PESQUISANDO */}
                 {isThinking && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', animation: 'fadeIn 0.2s ease' }}>
-                    <BotAvatarSVG size={26} />
+                    <ClippyAvatarSVG size={26} trackMouse={false} />
                     <div
                       style={{
                         padding: '8px 14px',
@@ -1705,7 +1795,7 @@ ${contextArticles}`;
                       }}
                     >
                       <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginRight: '4px' }}>
-                        {aiProvider !== 'local' && hasConfiguredApi ? 'ConciliBot consultando IA & manuais...' : 'ConciliBot pesquisando nos manuais...'}
+                        {aiProvider !== 'local' && hasConfiguredApi ? 'Clips consultando IA & manuais...' : 'Clips pesquisando nos manuais...'}
                       </span>
                       <div style={{ display: 'flex', gap: '3px' }}>
                         <span
@@ -1864,7 +1954,7 @@ ${contextArticles}`;
               maxWidth: '220px',
             }}
           >
-            <span>Precisa de ajuda com os manuais? 🤖✨</span>
+            <span>Parece que você precisa de ajuda com os manuais! 📎✨</span>
             <button
               type="button"
               onClick={(e) => {
@@ -1889,7 +1979,7 @@ ${contextArticles}`;
           </div>
         )}
 
-        {/* BOTÃO DO ROBOZINHO (FLUTUANDO COM LEVE MOVIMENTO NA TELA) */}
+        {/* BOTÃO DO CLIPS (FLUTUANDO COM LEVE MOVIMENTO NA TELA) */}
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
@@ -1907,10 +1997,10 @@ ${contextArticles}`;
             justifyContent: 'center',
             outline: 'none',
           }}
-          title={isOpen ? 'Fechar ConciliBot IA' : 'Abrir ConciliBot IA - Pergunte sobre os manuais'}
+          title={isOpen ? 'Fechar Clips IA' : 'Abrir Clips IA - Pergunte sobre os manuais'}
         >
-          {/* Avatar SVG do Robô */}
-          <BotAvatarSVG size={66} isHappy={isBotHovered || isOpen} />
+          {/* Avatar SVG do Clips (Clippy) */}
+          <ClippyAvatarSVG size={72} isHappy={isBotHovered || isOpen} trackMouse={true} />
 
           {/* Badge de Status / Mensagens */}
           <span

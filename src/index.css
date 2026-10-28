@@ -938,14 +938,17 @@ figure.article-video-figure,
 }
 
 /* ==========================================================================
-   ConciliBot - Robô Assistente de IA (Animações e Efeitos Visuais)
+   Clips Contábil (Clippy IA) - Assistente com visual nostálgico e olhos animados
    ========================================================================== */
 @keyframes botFloat {
   0%, 100% {
     transform: translateY(0) rotate(0deg);
   }
-  50% {
-    transform: translateY(-8px) rotate(1.5deg);
+  30% {
+    transform: translateY(-8px) rotate(-1.5deg);
+  }
+  65% {
+    transform: translateY(-3px) rotate(1.2deg);
   }
 }
 
