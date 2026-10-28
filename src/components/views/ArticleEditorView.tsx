@@ -1733,6 +1733,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
   // Exclusão definitiva do artigo pelo Administrador
   const handleConfirmDeleteArticle = async () => {
     if (!editingArticle) return;
+    const targetTitle = editingArticle.title;
     try {
       setIsDeletingArticle(true);
       await deleteArticle(editingArticle.id);
@@ -1741,7 +1742,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
         type: 'success',
         badgeText: 'Sucesso',
         title: 'Artigo Excluído',
-        message: `O artigo "${editingArticle.title}" foi removido com sucesso da Base de Conhecimento.`,
+        message: `O artigo "${targetTitle}" foi removido com sucesso da Base de Conhecimento.`,
         confirmText: 'OK',
         onConfirm: () => {
           onClose();
@@ -1752,6 +1753,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
       });
     } catch (err) {
       console.error('Erro ao excluir artigo:', err);
+      setIsConfirmDeleteOpen(false);
       showDialog({
         type: 'error',
         badgeText: 'Erro',
@@ -1759,6 +1761,7 @@ export const ArticleEditorView: React.FC<ArticleEditorViewProps> = ({
         message: 'Ocorreu um erro ao tentar excluir o artigo. Por favor, tente novamente.',
         confirmText: 'Fechar',
       });
+    } finally {
       setIsDeletingArticle(false);
     }
   };

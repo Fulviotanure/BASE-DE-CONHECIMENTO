@@ -1886,9 +1886,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch {}
 
-    // 5. Exclui do Firestore se conectado
+    // 5. Exclui do Firestore em segundo plano se conectado (não bloqueia a interface)
     if (isFirebaseConfigured) {
-      await deleteArticleFromFirestore(articleId).catch((err) => {
+      deleteArticleFromFirestore(articleId).catch((err) => {
         console.warn('Erro ao excluir artigo do Firestore:', err);
       });
     }
@@ -2303,7 +2303,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 6. Exclui do Firestore se conectado
     if (isFirebaseConfigured) {
-      await deleteCategoryFromFirestore(id).catch(console.warn);
+      deleteCategoryFromFirestore(id).catch(console.warn);
     }
 
     addNotification({

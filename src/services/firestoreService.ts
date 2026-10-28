@@ -66,10 +66,24 @@ export async function updateArticleInFirestore(
   });
 }
 
+// Helper com timeout para evitar que operações assíncronas do Firestore travem a interface
+const withFirestoreTimeout = <T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout de operação no Firestore (${timeoutMs}ms)`)), timeoutMs)
+    ),
+  ]);
+};
+
 export async function deleteArticleFromFirestore(articleId: string): Promise<void> {
   if (!db) return;
-  const docRef = doc(db, 'articles', articleId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'articles', articleId);
+    await withFirestoreTimeout(deleteDoc(docRef), 2000);
+  } catch (err) {
+    console.warn('Erro ou timeout ao excluir artigo do Firestore:', err);
+  }
 }
 
 // ----------------------------------------------------
@@ -326,8 +340,12 @@ export async function saveCategoryToFirestore(category: Category): Promise<void>
 
 export async function deleteCategoryFromFirestore(categoryId: string): Promise<void> {
   if (!db) return;
-  const docRef = doc(db, 'categories', categoryId);
-  await deleteDoc(docRef).catch(() => {});
+  try {
+    const docRef = doc(db, 'categories', categoryId);
+    await withFirestoreTimeout(deleteDoc(docRef), 2000);
+  } catch (err) {
+    console.warn('Erro ou timeout ao excluir categoria do Firestore:', err);
+  }
 }
 
 export async function seedFirestoreWithMovideskData(): Promise<{ success: boolean; count: number }> {
