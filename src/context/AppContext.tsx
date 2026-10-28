@@ -340,7 +340,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed
+          const parsedIds = new Set(parsed.map((c: Category) => c.id));
+          const missingInitial = INITIAL_CATEGORIES.filter((c) => !parsedIds.has(c.id));
+          const combined = [...parsed, ...missingInitial];
+          return combined
             .filter((cat: Category) => !deletedIds.has(cat.id))
             .map((cat: Category) => {
               if (!cat.accessLevel) {
@@ -348,10 +351,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   cat.title?.toLowerCase().includes('playbook') ||
                   cat.id === 'cat-11' ||
                   cat.id === 'cat-12';
-                return { ...cat, accessLevel: isPb ? 'INTERNAL' : 'ALL' };
+                return { ...cat, accessLevel: (isPb ? 'INTERNAL' : 'ALL') as 'INTERNAL' | 'ALL' };
               }
               return cat;
-            });
+            })
+            .sort((a, b) => a.orderIndex - b.orderIndex);
         }
       }
     } catch {}
@@ -395,7 +399,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed: Article[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          loaded = parsed;
+          const parsedIds = new Set(parsed.map((a: Article) => a.id));
+          const missingInitial = INITIAL_ARTICLES.filter((a) => !parsedIds.has(a.id));
+          loaded = [...parsed, ...missingInitial];
         }
       } catch {}
     }
@@ -618,28 +624,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubArticles = subscribeArticles((remoteArticles) => {
       const deletedArticleIds = getDeletedArticleIds();
       const filtered = remoteArticles.filter((a) => !deletedArticleIds.has(a.id));
-      if (filtered.length > 0) {
-        let hasFixedS3 = false;
-        const sanitized = filtered.map((a) => {
-          if (a.contentHtml && a.contentHtml.includes('s3.amazonaws.com/movidesk-files')) {
-            hasFixedS3 = true;
-            const fixedHtml = a.contentHtml.replace(
-              /https?:\/\/s3\.amazonaws\.com\/movidesk-files\/([A-Za-z0-9_-]+)(?:[^"'\s>]*)/g,
-              '/article-images/$1.png'
-            );
-            const updatedArt = { ...a, contentHtml: fixedHtml };
-            if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br') {
-              saveArticleToFirestore(updatedArt).catch(() => {});
-            }
-            return updatedArt;
+      let hasFixedS3 = false;
+      const sanitized = filtered.map((a) => {
+        if (a.contentHtml && a.contentHtml.includes('s3.amazonaws.com/movidesk-files')) {
+          hasFixedS3 = true;
+          const fixedHtml = a.contentHtml.replace(
+            /https?:\/\/s3\.amazonaws\.com\/movidesk-files\/([A-Za-z0-9_-]+)(?:[^"'\s>]*)/g,
+            '/article-images/$1.png'
+          );
+          const updatedArt = { ...a, contentHtml: fixedHtml };
+          if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br') {
+            saveArticleToFirestore(updatedArt).catch(() => {});
           }
-          return a;
-        });
-
-        setArticles(sanitized);
-        if (hasFixedS3) {
-          localStorage.setItem('conciliador_articles_v9', JSON.stringify(sanitized));
+          return updatedArt;
         }
+        return a;
+      });
+
+      // Mescla com artigos iniciais que ainda não existam no Firestore para disponibilidade imediata
+      const remoteIds = new Set(sanitized.map((a) => a.id));
+      const missingInitial = INITIAL_ARTICLES.filter(
+        (a) => !remoteIds.has(a.id) && !deletedArticleIds.has(a.id)
+      );
+
+      const allCombined = [...sanitized, ...missingInitial];
+      setArticles(allCombined);
+      localStorage.setItem('conciliador_articles_v9', JSON.stringify(allCombined));
+
+      // Se o usuário logado for administrador, sincroniza os artigos faltantes no Firestore
+      if (
+        missingInitial.length > 0 &&
+        (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br')
+      ) {
+        missingInitial.forEach((missingArt) => {
+          saveArticleToFirestore(missingArt).catch(() => {});
+        });
       }
     });
 

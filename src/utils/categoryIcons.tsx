@@ -25,6 +25,7 @@ export const POPULAR_CATEGORY_ICONS: IconOption[] = [
   { name: 'PieChart', label: 'Gráfico Pizza / Relatórios', category: 'contabil' },
   { name: 'BarChart3', label: 'Gráfico Barras / Métricas', category: 'contabil' },
   { name: 'TrendingUp', label: 'Tendências / Desempenho', category: 'contabil' },
+  { name: 'Activity', label: 'Movimentações / Atividade Contábil', category: 'contabil' },
 
   // Dados & Integrações
   { name: 'Database', label: 'Banco de Dados / Cadastros', category: 'dados' },

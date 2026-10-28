@@ -333,29 +333,44 @@ export async function deleteCategoryFromFirestore(categoryId: string): Promise<v
 export async function seedFirestoreWithMovideskData(): Promise<{ success: boolean; count: number }> {
   if (!db) throw new Error('Firebase Firestore não está inicializado.');
 
-  // Verifica se já existem artigos
-  const existingArticles = await getDocs(collection(db, 'articles'));
-  if (!existingArticles.empty) {
-    return { success: true, count: existingArticles.size };
-  }
-
   // 1. Grava Categorias
   for (const cat of INITIAL_CATEGORIES) {
-    await setDoc(doc(db, 'categories', cat.id), cat);
+    await setDoc(doc(db, 'categories', cat.id), cat, { merge: true });
   }
 
-  // 2. Grava Artigos Iniciais
+  // 2. Grava Artigos Iniciais (sem duplicar)
+  const existingSnap = await getDocs(collection(db, 'articles'));
+  const existingIds = new Set(existingSnap.docs.map((d) => d.id));
+
+  let insertedCount = 0;
   for (const art of INITIAL_ARTICLES) {
-    await setDoc(doc(db, 'articles', art.id), {
-      ...art,
-      serverCreatedAt: serverTimestamp(),
-    });
+    if (!existingIds.has(art.id)) {
+      await setDoc(doc(db, 'articles', art.id), {
+        ...art,
+        serverCreatedAt: serverTimestamp(),
+        serverUpdatedAt: serverTimestamp(),
+      });
+      insertedCount++;
+    } else {
+      // Atualiza categoria ou slug caso tenham sido ajustados (ex: migração para Movimentações)
+      await setDoc(
+        doc(db, 'articles', art.id),
+        {
+          categoryId: art.categoryId,
+          categoryName: art.categoryName,
+          title: art.title,
+          slug: art.slug,
+          serverUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
   }
 
   // 3. Grava Ferramentas Iniciais
   for (const tool of INITIAL_TOOLS) {
-    await setDoc(doc(db, 'tools_links', tool.id), tool);
+    await setDoc(doc(db, 'tools_links', tool.id), tool, { merge: true });
   }
 
-  return { success: true, count: INITIAL_ARTICLES.length };
+  return { success: true, count: insertedCount };
 }
