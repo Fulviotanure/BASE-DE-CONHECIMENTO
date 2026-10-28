@@ -613,22 +613,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 2. Ouvinte de Artigos Firestore (com auto-sanitização de links S3 para mídias locais)
+    // 2. Ouvinte de Artigos Firestore (sanitiza em memória para exibição, sem loops de gravação no listener)
+    let lastArticlesSignature = '';
     const unsubArticles = subscribeArticles((remoteArticles) => {
       const deletedArticleIds = getDeletedArticleIds();
       const filtered = remoteArticles.filter((a) => !deletedArticleIds.has(a.id));
-      let hasFixedS3 = false;
+
       const sanitized = filtered.map((a) => {
         const cleanedHtml = sanitizeArticleHtml(a.contentHtml);
-        const hasChanged = cleanedHtml !== a.contentHtml;
-        if (hasChanged) {
-          const updatedArt = { ...a, contentHtml: cleanedHtml };
-          if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br') {
-            saveArticleToFirestore(updatedArt).catch(() => {});
-          }
-          return updatedArt;
-        }
-        return a;
+        return cleanedHtml !== a.contentHtml ? { ...a, contentHtml: cleanedHtml } : a;
       });
 
       // Mescla com artigos iniciais que ainda não existam no Firestore para disponibilidade imediata
@@ -638,21 +631,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
 
       const allCombined = [...sanitized, ...missingInitial];
-      setArticles(allCombined);
-      localStorage.setItem('conciliador_articles_v10', JSON.stringify(allCombined));
 
-      // Se o usuário logado for administrador, sincroniza os artigos faltantes no Firestore
-      if (
-        missingInitial.length > 0 &&
-        (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.email === 'fulvio@conciliadorcontabil.com.br')
-      ) {
-        missingInitial.forEach((missingArt) => {
-          saveArticleToFirestore(missingArt).catch(() => {});
-        });
+      // Assinatura para evitar re-renders e gravações excessivas em loop
+      const newSignature = allCombined.map((a) => `${a.id}:${a.updatedAt || a.createdAt || ''}`).join('|');
+      if (newSignature !== lastArticlesSignature) {
+        lastArticlesSignature = newSignature;
+        setArticles(allCombined);
+        try {
+          localStorage.setItem('conciliador_articles_v10', JSON.stringify(allCombined));
+        } catch {}
       }
     });
 
-    // 3. Ouvinte de Usuários Firestore (com normalização, desduplicação por e-mail e respeito a exclusões)
+    // 3. Ouvinte de Usuários Firestore
     const unsubUsers = subscribeUsers((remoteUsers) => {
       const deletedEmails = getDeletedUserEmails();
 

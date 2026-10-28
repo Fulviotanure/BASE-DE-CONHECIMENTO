@@ -51,10 +51,12 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
   const svgRef = useRef<SVGSVGElement | null>(null);
   const leftPupilRef = useRef<SVGGElement | null>(null);
   const rightPupilRef = useRef<SVGGElement | null>(null);
+  const leftBrowRef = useRef<SVGGElement | null>(null);
+  const rightBrowRef = useRef<SVGGElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
 
-  // Rastreamento de alta performance a 120 FPS via Hardware Accelerated Transform (Zero React Re-renders!)
+  // Rastreamento expressivo e ágil a 120 FPS via Hardware Acceleration (Zero React Re-renders!)
   useEffect(() => {
     if (!trackMouse) return;
 
@@ -74,11 +76,13 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       const angle = Math.atan2(dy, dx);
       const dist = Math.hypot(dx, dy);
 
-      // Raio máximo de alcance da pupila (escala do viewBox)
-      const maxRadius = 24;
-      const factor = Math.min(dist / 80, 1);
-      targetX = Math.cos(angle) * maxRadius * factor;
-      targetY = Math.sin(angle) * maxRadius * factor;
+      // Raio amplo de alcance das pupilas (em coordenadas do viewBox 550x960)
+      // Horizontal até 58px, Vertical até 46px para olhar expressivamente e visivelmente na direção do mouse
+      const maxRadiusX = 58;
+      const maxRadiusY = 46;
+      const factor = Math.min(dist / 320, 1);
+      targetX = Math.cos(angle) * maxRadiusX * factor;
+      targetY = Math.sin(angle) * maxRadiusY * factor;
 
       if (!rafIdRef.current) {
         rafIdRef.current = requestAnimationFrame(animatePupils);
@@ -86,13 +90,19 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
     };
 
     const animatePupils = () => {
-      // Interpolação suave (LERP) para movimento orgânico e fluido
-      currentX += (targetX - currentX) * 0.38;
-      currentY += (targetY - currentY) * 0.38;
+      // Interpolação suave e altamente responsiva (LERP 0.45)
+      currentX += (targetX - currentX) * 0.45;
+      currentY += (targetY - currentY) * 0.45;
 
       const transformStr = `translate3d(${currentX.toFixed(2)}px, ${currentY.toFixed(2)}px, 0)`;
       if (leftPupilRef.current) leftPupilRef.current.style.transform = transformStr;
       if (rightPupilRef.current) rightPupilRef.current.style.transform = transformStr;
+
+      // Micro-expressão viva nas sobrancelhas acompanhando o olhar
+      const browY = (currentY * 0.16).toFixed(2);
+      const browTransform = `translate3d(0, ${browY}px, 0)`;
+      if (leftBrowRef.current) leftBrowRef.current.style.transform = browTransform;
+      if (rightBrowRef.current) rightBrowRef.current.style.transform = browTransform;
 
       if (Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) {
         rafIdRef.current = requestAnimationFrame(animatePupils);
@@ -108,7 +118,7 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
     };
   }, [trackMouse]);
 
-  // Ciclo autônomo de piscadas: começa rápido (700ms) e pisca regularmente a cada 2.0s a 3.5s
+  // Ciclo autônomo de piscadas dinâmicas e naturais (frequência de 1.1s a 2.2s com piscadas duplas)
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -116,28 +126,28 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       setIsBlinking(true);
       setTimeout(() => {
         setIsBlinking(false);
-        // 30% de chance de piscada dupla charmosa
-        if (Math.random() < 0.3) {
+        // 40% de chance de piscada dupla charmosa
+        if (Math.random() < 0.4) {
           setTimeout(() => {
             setIsBlinking(true);
             setTimeout(() => {
               setIsBlinking(false);
               scheduleNext();
-            }, 90);
-          }, 90);
+            }, 80);
+          }, 80);
         } else {
           scheduleNext();
         }
-      }, 100);
+      }, 90);
     };
 
     const scheduleNext = () => {
-      const delay = 2000 + Math.random() * 1500;
+      const delay = 1100 + Math.random() * 1100;
       timeoutId = setTimeout(doBlink, delay);
     };
 
-    // Começa a piscar logo após carregar na tela
-    timeoutId = setTimeout(doBlink, 700);
+    // Começa a piscar logo após surgir na tela (300ms)
+    timeoutId = setTimeout(doBlink, 300);
 
     return () => clearTimeout(timeoutId);
   }, []);
@@ -286,7 +296,7 @@ const ClippyAvatarSVG: React.FC<{ size?: number; isHappy?: boolean; trackMouse?:
       {/* 4. SOBRANCELHAS DE ARGILA (Formato cápsula/salsicha 3D) */}
       {/* Sobrancelha Esquerda */}
       <g filter="url(#clayBrowShadow)">
-        <g
+        <g ref={leftBrowRef}
           style={{
             transformOrigin: '380px 160px',
             transform: isBlinking ? 'translateY(18px)' : (isHappy ? 'translateY(-10px) rotate(-3deg)' : 'translateY(0)'),
@@ -682,6 +692,28 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
     return clean.replace(/\s+/g, ' ').trim();
   };
 
+/**
+ * Detecta se a pergunta é ilícita, perigosa ou completamente alheia
+ * ao escopo do software Conciliador Contábil.
+ */
+function isOutOfScopeOrHarmful(query: string): boolean {
+  const q = query.toLowerCase().trim();
+
+  // 1. Termos ilícitos, violentos ou criminosos (ex: "como roubar uma velha", fraudes, invasões)
+  const harmfulPattern = /\b(roubar|roubo|assaltar|assalto|furtar|furto|matar|assassinar|morte|crime|criminoso|golpe|burlar|hackear|hacker|invasao|invadir|droga|drogas|arma|armas|veneno|bater|agredir|estelionato|sequestro|pirataria|sequestrar|estuprar|pedofilia|bomba|terrorismo|suicidio|suicídio)\b/i;
+  if (harmfulPattern.test(q)) {
+    return true;
+  }
+
+  // 2. Temas comuns totalmente fora de contabilidade e software
+  const offTopicPattern = /\b(receita de|como cozinhar|fazer bolo|futebol|quem ganhou o jogo|brasileirao|campeonato|loteria|jogar truco|signo|horoscopo|previsao do tempo|fofoca|novela|politica|presidente|eleicao|namoro|relacionamento|piada suja|musica preferida)\b/i;
+  if (offTopicPattern.test(q)) {
+    return true;
+  }
+
+  return false;
+}
+
   // Processamento com Inteligência Artificial (Gemini / OpenAI ou Motor Local)
   const processUserQuestion = async (query: string): Promise<{ text: string; articles: Article[]; quickReplies?: string[]; isAiGenerated?: boolean }> => {
     const cleanQuery = query.toLowerCase().trim();
@@ -726,6 +758,20 @@ export const AiAssistantBot: React.FC<AiAssistantBotProps> = ({ onSelectArticle 
         text: `O **Sistema de Patentes** da Conciliador Contábil reconhece e premia os colaboradores internos pelo engajamento e contribuição na Base de Conhecimento! 🎖️\n\n**Como pontuar:**\n• **+100 pontos** por artigo aprovado e publicado\n• **+50 pontos** por artigo submetido em análise\n• **+30 pontos** por revisão técnica realizada\n• **+20 pontos** por ajuste atendido\n\n**Hierarquia de Patentes:**\n1. 🌱 **Aspirante do Saber** (0 a 99 pts)\n2. 🥉 **Redator Bronze** (100 a 299 pts)\n3. 🥈 **Escritor Prata** (300 a 599 pts)\n4. 🥇 **Mestre do Conteúdo Ouro** (600 a 999 pts)\n5. 👑 **Guardião Lendário** (1.000+ pts)\n\nVocê pode acompanhar sua evolução no topo do cabeçalho ou na aba **Dashboard > Usuários & Patentes**!`,
         articles: [],
         quickReplies: defaultQuickReplies,
+      };
+    }
+
+    // 3.2 Validação de Escopo e Segurança: Bloqueia na largada perguntas ilícitas ou fora do escopo
+    if (isOutOfScopeOrHarmful(cleanQuery)) {
+      return {
+        text: `Não posso ajudar com isso. ✋⚖️\n\nSou **O Conciliador**, assistente oficial e exclusivo da **Base de Conhecimento do Conciliador Contábil**.\n\nMinha função é orientar exclusivamente sobre rotinas contábeis, regras de conciliação, importação de extratos e uso do sistema.\n\nComo posso te ajudar com o Conciliador Contábil hoje?`,
+        articles: [],
+        quickReplies: [
+          'Como importar extrato bancário?',
+          'Como criar regras de conciliação?',
+          'Quais ERPs são homologados?',
+        ],
+        isAiGenerated: false,
       };
     }
 
@@ -784,42 +830,56 @@ Conteúdo/Instruções: ${m.cleanContent.slice(0, 1200)}`;
     // CASO 1: INTEGRAÇÃO REAL COM GOOGLE GEMINI API
     // =========================================================================
     if (aiProvider === 'gemini' && geminiApiKey.trim()) {
+      const abortCtrl = new AbortController();
+      const abortTimer = setTimeout(() => abortCtrl.abort(), 8000);
+
       try {
-        const prompt = `Você é O Conciliador, o assistente inteligente oficial da Base de Conhecimento do software Conciliador Contábil.
-Sua missão é responder à dúvida do usuário de forma clara, amigável, didática e direta em português brasileiro.
-Baseie-se estritamente nas regras e procedimentos descritos nos manuais da equipe fornecidos abaixo.
+        const prompt = `Você é O Conciliador, assistente inteligente oficial da Base de Conhecimento do software Conciliador Contábil.
+
+DIRETRIZES RÍGIDAS DE ESCOPO:
+1. Você responde EXCLUSIVAMENTE sobre o software Conciliador Contábil, procedimentos contábeis, conciliação bancária, extratos, ERPs e regras do sistema.
+2. Se o usuário fizer perguntas sobre assuntos externos (crimes, piadas inadequadas, conselhos pessoais, receitas, esportes, etc.), RECUSE IMEDIATAMENTE educadamente dizendo:
+"Não posso responder a essa pergunta. Sou o assistente oficial do Conciliador Contábil e posso ajudar apenas com rotinas contábeis, conciliação e uso do sistema."
+3. Forneça uma explicação clara, didática e direta em português brasileiro. Destaque termos importantes em negrito (**termo**).
 
 MANUAIS OFICIAIS DISPONÍVEIS:
 ${contextArticles}
 
 PERGUNTA DO USUÁRIO:
-"${query}"
-
-INSTRUÇÕES OBRIGATÓRIAS:
-1. Forneça uma explicação completa e bem estruturada (em tópicos ou passos, se aplicável).
-2. Destaque termos e comandos importantes em negrito (**termo**).
-3. Seja simpático e profissional.
-4. Mencione os nomes dos manuais de referência encontrados.
-5. Não corte o texto no meio e não inclua tags HTML brutas.`;
+"${query}"`;
 
         const modelToUse = geminiModel.trim() || 'gemini-3.8-flash';
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${geminiApiKey.trim()}`,
           {
             method: 'POST',
+            signal: abortCtrl.signal,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
-                temperature: 0.7,
+                temperature: 0.5,
                 maxOutputTokens: 1000,
               },
             }),
           }
         );
 
+        clearTimeout(abortTimer);
+
         if (res.ok) {
           const data = await res.json();
+
+          // Trata recusa ou bloqueio de segurança nativo do Gemini (finishReason === 'SAFETY')
+          if (data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason === 'SAFETY') {
+            return {
+              text: `Não posso responder a essa pergunta. Como assistente oficial do **Conciliador Contábil**, respondo exclusivamente sobre rotinas e manuais do nosso software.`,
+              articles: [],
+              isAiGenerated: false,
+              quickReplies: defaultQuickReplies,
+            };
+          }
+
           const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (generatedText) {
             return {
@@ -831,7 +891,8 @@ INSTRUÇÕES OBRIGATÓRIAS:
           }
         }
       } catch (err) {
-        console.warn('Falha na chamada Gemini API, acionando motor local:', err);
+        clearTimeout(abortTimer);
+        console.warn('Falha ou timeout na chamada Gemini API, acionando motor local:', err);
       }
     }
 
@@ -926,7 +987,20 @@ ${contextArticles}`;
       };
     }
 
-    // Se nenhum artigo for encontrado
+    // Se nenhum artigo for encontrado, verifica se há termos contábeis reconhecíveis
+    const accountingTerms = ['extrato', 'banco', 'ofx', 'conciliar', 'concilia', 'regra', 'lote', 'contabil', 'contábil', 'importa', 'erp', 'dominio', 'questor', 'prosoft', 'alterdata', 'cartao', 'cartão', 'saldo', 'manual', 'movidesk', 'movimento', 'artigo', 'cadastro'];
+    const hasAnyAccountingTerm = searchTerms.some((t) => accountingTerms.some((acc) => t.includes(acc) || acc.includes(t)));
+
+    if (!hasAnyAccountingTerm) {
+      return {
+        text: `Não posso responder a essa dúvida, pois sou especializado exclusivamente no **software Conciliador Contábil** e rotinas de conciliação bancária.\n\nSe você tiver dúvidas sobre importação de extratos, criação de regras ou operação da plataforma, estou à disposição! 📎`,
+        articles: available.slice(0, 2),
+        isAiGenerated: false,
+        quickReplies: defaultQuickReplies,
+      };
+    }
+
+    // Se nenhum artigo for encontrado mas for uma dúvida contábil
     return {
       text: `Não encontrei um manual específico correspondente a **"${query}"** na base de dados oficial no momento.\n\n💡 **Dicas para encontrar o que precisa:**\n• Tente usar palavras-chave diretas (ex: *"extrato"*, *"banco"*, *"regra"*, *"fornecedor"*, *"ofx"*).\n• Você também pode usar a busca rápida no topo ou pelo atalho **Ctrl + K**.\n• Para rotinas novas, você pode sugerir a criação de um artigo em **"+ Criar Novo Artigo"**!`,
       articles: available.slice(0, 2),
